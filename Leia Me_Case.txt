@@ -1,0 +1,51 @@
+CASE TÉCNICO — RESIQUANT | MACHINE LEARNING APLICADO A DADOS EXPERIMENTAIS
+
+PRAZO
+O candidato terá 2 (dois) dias para desenvolvimento e entrega da solução.
+
+CONTEXTO
+Serão fornecidos dados experimentais de voltametria de pulso diferencial (DPV) provenientes de biossensores eletroquímicos, além de metadados e resultados microbiológicos de referência.
+
+Não é necessário domínio aprofundado sobre a construção do biossensor. Para o desenvolvimento do case, considere que cada sensor pode ser avaliado em três condições experimentais:
+
+0. Eletrodo limpo — carbono;
+1. Eletrodo modificado com oligonucleotídeo de captura;
+2. Eletrodo modificado com oligonucleotídeo de captura após contato/hibridização com o alvo relacionado ao rRNA 16S.
+
+OBJETIVO DO CASE
+Desenvolver uma solução computacional capaz de:
+- importar e validar os dados experimentais fornecidos;
+- estruturar um banco de dados rastreável;
+- relacionar os voltamogramas aos respectivos metadados;
+- preparar os sinais eletroquímicos para análise por Machine Learning;
+- construir e avaliar uma estratégia para classificação das amostras contaminadas e não contaminadas;
+- apresentar e interpretar os resultados obtidos.
+
+ARQUIVOS FORNECIDOS
+1. dados/metadata_3_estagios.csv
+2. dados/dpv_voltammograms_long_3_estagios.csv
+3. dados/plaqueamento_triplicatas.csv
+4. dicionario_dados.csv
+5. requirements_sugeridos.txt
+
+OBSERVAÇÕES
+- Os voltamogramas são fornecidos em formato longo. A organização dos dados para modelagem faz parte do desafio.
+- A escolha das técnicas de pré-processamento, construção de features e algoritmos de Machine Learning deverá ser justificada pelo candidato.
+- O candidato poderá utilizar Python e Google Colab.
+- Não é necessário desenvolver interface gráfica.
+- O uso de bibliotecas de análise de dados e Machine Learning é permitido.
+- Caso sejam utilizadas ferramentas de inteligência artificial generativa, o uso deverá ser declarado na entrega.
+- Todo código apresentado deverá ser compreendido pelo candidato e passível de explicação/modificação durante a defesa.
+
+ENTREGAS MÍNIMAS
+- notebook executável (.ipynb), preferencialmente compatível com Google Colab;
+- scripts .py complementares, caso utilizados;
+- banco/tabela final estruturada para análise;
+- README com instruções de execução da solução;
+- arquivo de dependências utilizado;
+- resultados e métricas da classificação;
+- figuras/gráficos considerados relevantes;
+- apresentação para defesa do case.
+
+IMPORTANTE
+A solução será avaliada não apenas pelo desempenho final do modelo, mas também pela organização dos dados, qualidade do código, reprodutibilidade, coerência metodológica, validação e capacidade de interpretação dos resultados.
