@@ -1,53 +1,81 @@
-# bolsa_fiep_-RP_20061
+# Case - Organização e modelagem de sinais eletroquímicos
 
-CASE TÉCNICO — RESIQUANT | MACHINE LEARNING APLICADO A DADOS EXPERIMENTAIS
+Este repositório entrega uma solução reprodutível para:
+- leitura e integração de arquivos de voltametria;
+- validação de qualidade dos dados;
+- organização em banco rastreável;
+- preparação de features para machine learning;
+- treinamento/validação de modelos e exportação de resultados.
 
-PRAZO
-O candidato terá 2 (dois) dias para desenvolvimento e entrega da solução.
+## Estrutura
 
-CONTEXTO
-Serão fornecidos dados experimentais de voltametria de pulso diferencial (DPV) provenientes de biossensores eletroquímicos, além de metadados e resultados microbiológicos de referência.
+- `/src/biosensor_pipeline.py`: funções do pipeline (ingestão, validação, organização, modelagem e exportação).
+- `/src/run_pipeline.py`: CLI para execução fim-a-fim.
+- `/notebooks/case_biossensor.ipynb`: notebook executável para análise e apresentação.
+- `/requirements.txt`: dependências.
+- `/IA_DECLARATION.md`: declaração de uso de IA.
 
-Não é necessário domínio aprofundado sobre a construção do biossensor. Para o desenvolvimento do case, considere que cada sensor pode ser avaliado em três condições experimentais:
+## Requisitos
 
-0. Eletrodo limpo — carbono;
-1. Eletrodo modificado com oligonucleotídeo de captura;
-2. Eletrodo modificado com oligonucleotídeo de captura após contato/hibridização com o alvo relacionado ao rRNA 16S.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-OBJETIVO DO CASE
-Desenvolver uma solução computacional capaz de:
-- importar e validar os dados experimentais fornecidos;
-- estruturar um banco de dados rastreável;
-- relacionar os voltamogramas aos respectivos metadados;
-- preparar os sinais eletroquímicos para análise por Machine Learning;
-- construir e avaliar uma estratégia para classificação das amostras contaminadas e não contaminadas;
-- apresentar e interpretar os resultados obtidos.
+## Formato esperado dos dados
 
-ARQUIVOS FORNECIDOS
-1. dados/metadata_3_estagios.csv
-2. dados/dpv_voltammograms_long_3_estagios.csv
-3. dados/plaqueamento_triplicatas.csv
-4. dicionario_dados.csv
-5. requirements_sugeridos.txt
+Os arquivos podem ser `.csv`, `.txt`, `.xlsx` ou `.xls` e devem conter colunas reconhecíveis de:
+- potencial (`potential`, `potencial`, `e`, `voltage`, `v`)
+- corrente (`current`, `corrente`, `i`, `ua`, `ma`)
 
-OBSERVAÇÕES
-- Os voltamogramas são fornecidos em formato longo. A organização dos dados para modelagem faz parte do desafio.
-- A escolha das técnicas de pré-processamento, construção de features e algoritmos de Machine Learning deverá ser justificada pelo candidato.
-- O candidato poderá utilizar Python e Google Colab.
-- Não é necessário desenvolver interface gráfica.
-- O uso de bibliotecas de análise de dados e Machine Learning é permitido.
-- Caso sejam utilizadas ferramentas de inteligência artificial generativa, o uso deverá ser declarado na entrega.
-- Todo código apresentado deverá ser compreendido pelo candidato e passível de explicação/modificação durante a defesa.
+Metadados (bactéria, amostra, replicata, lote, batelada e condição) são lidos de colunas existentes e/ou inferidos do nome dos arquivos.
 
-ENTREGAS MÍNIMAS
-- notebook executável (.ipynb), preferencialmente compatível com Google Colab;
-- scripts .py complementares, caso utilizados;
-- banco/tabela final estruturada para análise;
-- README com instruções de execução da solução;
-- arquivo de dependências utilizado;
-- resultados e métricas da classificação;
-- figuras/gráficos considerados relevantes;
-- apresentação para defesa do case.
+## Execução
 
-IMPORTANTE
-A solução será avaliada não apenas pelo desempenho final do modelo, mas também pela organização dos dados, qualidade do código, reprodutibilidade, coerência metodológica, validação e capacidade de interpretação dos resultados.
+```bash
+python src/run_pipeline.py --input-dir /caminho/para/dados_brutos --output-dir /caminho/saida
+```
+
+## Saídas geradas
+
+No diretório de saída:
+- `voltammograms_long.csv` (formato longo)
+- `voltammograms_wide.csv` (formato amplo)
+- `metadata_experiments.csv`
+- `validation_report.csv`
+- `biosensor_case.db` (SQLite)
+- `model_metrics.csv` (quando há dados suficientes)
+- `test_predictions.csv` (quando há dados suficientes)
+- `feature_importance_regions.csv` (quando há dados suficientes)
+
+## Pipeline implementado
+
+1. Leitura dos arquivos brutos.
+2. Validação de duplicidade, ausências, formato, incompletude e inconsistências.
+3. Tratamento e padronização de identificadores.
+4. Organização em tabelas relacionáveis (metadados + sinais).
+5. Preparação da matriz de features (voltamograma completo + descritores derivados).
+6. Modelagem com divisão por amostra (sem vazamento de replicatas), validação cruzada agrupada e comparação de modelos.
+7. Exportação dos dados processados e resultados.
+
+## Modelos e métricas
+
+Modelos:
+- Regressão logística (baseline)
+- LDA
+- Random Forest
+
+Métricas:
+- Matriz de confusão
+- Sensibilidade
+- Especificidade
+- Precisão
+- F1-score
+- Balanced accuracy
+- ROC-AUC (quando aplicável)
+
+## Inclusão de novos dados
+
+Para incorporar novos arquivos, basta adicioná-los ao diretório de entrada e reexecutar o pipeline.
+Não é necessário reconstruir manualmente as estruturas.
