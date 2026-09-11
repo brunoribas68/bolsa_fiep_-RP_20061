@@ -1,81 +1,89 @@
-# Case - Organização e modelagem de sinais eletroquímicos
+# Case — Smart Biosensors: Banco de Dados e Classificação de Contaminação Bacteriana
 
-Este repositório entrega uma solução reprodutível para:
-- leitura e integração de arquivos de voltametria;
-- validação de qualidade dos dados;
-- organização em banco rastreável;
-- preparação de features para machine learning;
-- treinamento/validação de modelos e exportação de resultados.
+Solução para o case do Bolsista Pesquisador Machine Learning (RP 20061): organização e
+validação de dados de voltametria (biossensores), construção de um banco rastreável e
+classificação de contaminação microbiológica a partir do sinal eletroquímico.
 
 ## Estrutura
 
-- `/src/biosensor_pipeline.py`: funções do pipeline (ingestão, validação, organização, modelagem e exportação).
-- `/src/run_pipeline.py`: CLI para execução fim-a-fim.
-- `/notebooks/case_biossensor.ipynb`: notebook executável para análise e apresentação.
-- `/requirements.txt`: dependências.
-- `/IA_DECLARATION.md`: declaração de uso de IA.
-
-## Requisitos
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+```
+Dados/                         # arquivos brutos (não versionados aqui, ver "Dados de entrada")
+src/
+  data_preparation.py          # Etapa 1: classifica arquivos pelo schema, junta e valida
+  ingest_pipeline.py           # Etapa 2: features, modelagem, validação e exportação
+case_biossensor.ipynb          # notebook único com as 3 fases do case, já executado
+requirements.txt
+README.md
+IA_DECLARATION.md
 ```
 
-## Formato esperado dos dados
+## Dados de entrada
 
-Os arquivos podem ser `.csv`, `.txt`, `.xlsx` ou `.xls` e devem conter colunas reconhecíveis de:
-- potencial (`potential`, `potencial`, `e`, `voltage`, `v`)
-- corrente (`current`, `corrente`, `i`, `ua`, `ma`)
+O pipeline reconhece automaticamente três papéis de arquivo **pelo conjunto de colunas**,
+não pelo nome do arquivo — então qualquer novo lote com esse schema é incorporado sem
+alterar código:
 
-Metadados (bactéria, amostra, replicata, lote, batelada e condição) são lidos de colunas existentes e/ou inferidos do nome dos arquivos.
+| Papel | Colunas obrigatórias | Conteúdo |
+|---|---|---|
+| Sinal (voltamograma) | `measurement_id`, `potential_V`, `current_uA` | 1 linha por ponto medido |
+| Metadata | `measurement_id`, `sample_id`, `contamination_status` | liga sinal → amostra/estágio/qualidade |
+| Plaqueamento | `sample_id`, `colony_count` | referência microbiológica (CFU) por amostra |
 
-## Execução
+Coloque os três arquivos dentro de uma pasta `Dados/` (mesmo nível do notebook) antes de
+executar. No Colab: monte o Google Drive ou faça upload direto dos 3 arquivos para essa pasta.
+
+## Como executar
+
+### Opção A — Notebook (recomendado, cobre as 3 fases)
+
+Abra `case_biossensor.ipynb` (local ou Google Colab) e rode todas as células, na ordem.
+Ele importa `src/data_preparation.py` e `src/ingest_pipeline.py` internamente.
+
+### Opção B — Linha de comando (os dois scripts separadamente)
 
 ```bash
-python src/run_pipeline.py --input-dir /caminho/para/dados_brutos --output-dir /caminho/saida
+pip install -r requirements.txt
+
+# Etapa 1: arrumar os dados (classificar, juntar, validar)
+python src/data_preparation.py --input-dir Dados --output-dir prepared
+
+# Etapa 2: ingerir (features, modelos, exportação)
+python src/ingest_pipeline.py --prepared-dir prepared --output-dir outputs
 ```
 
 ## Saídas geradas
 
-No diretório de saída:
-- `voltammograms_long.csv` (formato longo)
-- `voltammograms_wide.csv` (formato amplo)
-- `metadata_experiments.csv`
-- `validation_report.csv`
-- `biosensor_case.db` (SQLite)
-- `model_metrics.csv` (quando há dados suficientes)
-- `test_predictions.csv` (quando há dados suficientes)
-- `feature_importance_regions.csv` (quando há dados suficientes)
+Em `prepared/`:
+- `prepared_measurements.csv` — sinal + metadata já unidos (formato longo).
+- `prepared_samples.csv` — 1 linha por amostra, com CFU de plaqueamento agregado.
+- `preparation_report.csv` — relatório de qualidade da junção (duplicatas, ausências, etc.).
 
-## Pipeline implementado
+Em `outputs/`:
+- `voltammograms_long.csv` / `voltammograms_wide.csv` — formato longo e formato amplo (tabela analítica).
+- `metadata_experiments.csv` — metadados por amostra.
+- `biosensor_case.db` — SQLite com todas as tabelas acima, rastreável por `measurement_id`.
+- `model_metrics.csv` — métricas de CV e teste para os 3 modelos (regressão logística, LDA, Random Forest).
+- `test_predictions.csv` — predições do conjunto de teste.
+- `feature_importance_regions.csv` — regiões do voltamograma mais relevantes para a classificação.
 
-1. Leitura dos arquivos brutos.
-2. Validação de duplicidade, ausências, formato, incompletude e inconsistências.
-3. Tratamento e padronização de identificadores.
-4. Organização em tabelas relacionáveis (metadados + sinais).
-5. Preparação da matriz de features (voltamograma completo + descritores derivados).
-6. Modelagem com divisão por amostra (sem vazamento de replicatas), validação cruzada agrupada e comparação de modelos.
-7. Exportação dos dados processados e resultados.
+## Metodologia (resumo — detalhes no notebook)
 
-## Modelos e métricas
+- **Alvo**: `contamination_status` (0/1), vindo de `metadata_*.csv`.
+- **Features**: corrente em cada potencial do voltamograma + descritores derivados
+  (`peak_current`, `min_current`, `delta_current`).
+- **Validação**: split treino/teste e validação cruzada **agrupados por `sample_id`**,
+  para réplicas/estágios da mesma amostra nunca vazarem entre treino e teste.
+- **Modelos**: regressão logística (baseline), LDA e Random Forest.
+- **Métricas**: matriz de confusão, sensibilidade, especificidade, precisão, F1,
+  balanced accuracy e ROC-AUC (quando aplicável).
+- **Filtro de qualidade**: por padrão mantém medições com `qc_flag` em `PASS`/`REVIEW`
+  (configurável via `--keep-flags` no `ingest_pipeline.py`).
 
-Modelos:
-- Regressão logística (baseline)
-- LDA
-- Random Forest
+## Incluir novos dados
 
-Métricas:
-- Matriz de confusão
-- Sensibilidade
-- Especificidade
-- Precisão
-- F1-score
-- Balanced accuracy
-- ROC-AUC (quando aplicável)
+Basta adicionar os novos arquivos (mesmo schema de colunas) à pasta de entrada e
+reexecutar as duas etapas — não é necessário reconstruir manualmente nenhuma estrutura.
 
-## Inclusão de novos dados
+## Declaração de uso de IA
 
-Para incorporar novos arquivos, basta adicioná-los ao diretório de entrada e reexecutar o pipeline.
-Não é necessário reconstruir manualmente as estruturas.
+Ver `IA_DECLARATION.md`.
