@@ -11,10 +11,13 @@ Dados/                         # arquivos brutos (não versionados aqui, ver "Da
 src/
   data_preparation.py          # Etapa 1: classifica arquivos pelo schema, junta e valida
   ingest_pipeline.py           # Etapa 2: features, modelagem, validação e exportação
+  advanced_modeling.py         # Etapa 3 (opcional): features de diferença entre estágios,
+                                # descritores ricos, SVM/Gradient Boosting, CV multi-seed
 case_biossensor.ipynb          # notebook único com as 3 fases do case, já executado
 requirements.txt
 README.md
 IA_DECLARATION.md
+GUIA_DEFESA.md                 # guia de preparação para a apresentação/defesa
 ```
 
 ## Dados de entrada
@@ -49,7 +52,16 @@ python src/data_preparation.py --input-dir Dados --output-dir prepared
 
 # Etapa 2: ingerir (features, modelos, exportação)
 python src/ingest_pipeline.py --prepared-dir prepared --output-dir outputs
+
+# Etapa 3 (opcional): features de diferença entre estágios + modelos adicionais
+python src/advanced_modeling.py --prepared-dir prepared --output-dir outputs_advanced
 ```
+
+A Etapa 3 reestrutura os dados para 1 linha por amostra+replicata (combinando os 3 estágios
+do sensor), testa descritores mais ricos (AUC, potencial e largura do pico) e features de
+diferença entre estágios, além de SVM e Gradient Boosting. Resultado: salto de balanced
+accuracy de ~57% (Etapa 2, medição isolada) para ~94% (Etapa 3, diferença entre estágios) —
+ver `outputs_advanced/advanced_modeling_summary.csv` e a seção correspondente do notebook.
 
 ## Saídas geradas
 

@@ -16,7 +16,14 @@ desenvolvimento desta entrega, nas seguintes atividades:
   arquivo, como no pipeline original) e de bugs de robustez encontrados durante os
   testes (falha de validação cruzada com poucas amostras; estouro de memória no
   `pivot_table` ao lidar com valores ausentes).
-- Apoio na documentação técnica (README, comentários de código, este arquivo).
+- Apoio no desenvolvimento e teste de uma segunda abordagem de features (diferença de
+  sinal entre estágios do sensor, descritores de curva mais ricos, modelos adicionais
+  SVM/Gradient Boosting), incluindo checagem de vazamento de dados antes de aceitar o
+  resultado (verificação de que o ganho de desempenho não vinha de um confundidor como
+  lote do sensor).
+- Apoio na montagem da apresentação de slides (estrutura, gráficos, conteúdo).
+- Apoio na documentação técnica (README, comentários de código, este arquivo, e o guia
+  de preparação para a defesa).
 
 Toda a validação da lógica, as decisões de modelagem (definição da variável-alvo,
 estratégia de validação, escolha de features) e a interpretação final dos resultados
