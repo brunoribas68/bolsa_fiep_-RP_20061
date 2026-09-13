@@ -1,0 +1,2 @@
+files_found,files_classified,files_unclassified,signal_rows,metadata_rows,plating_rows,measurements_without_metadata,metadata_without_signal,samples_without_plating,duplicate_signal_points,duplicate_metadata_ids,invalid_qc_flags,missing_potential_or_current,notes
+dpv_voltammograms_long_3_estagios.csv; metadata_3_estagios.csv; plaqueamento_triplicatas.csv,dpv_voltammograms_long_3_estagios.csv -> signal; metadata_3_estagios.csv -> metadata; plaqueamento_triplicatas.csv -> plating,,235800,1800,600,0,0,0,0,0,0,0,
