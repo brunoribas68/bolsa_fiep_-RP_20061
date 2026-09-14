@@ -1,0 +1,32 @@
+{
+  "feature_set": "stage_diff_full_curve",
+  "model": "baseline_log_reg",
+  "seed": 42,
+  "n_train": 384,
+  "n_test": 118,
+  "n_features": 154,
+  "confusion_matrix_default": [
+    [
+      19,
+      2
+    ],
+    [
+      7,
+      90
+    ]
+  ],
+  "confusion_matrix_opt_threshold": [
+    [
+      19,
+      2
+    ],
+    [
+      7,
+      90
+    ]
+  ],
+  "threshold_opt": 0.5159474826462764,
+  "balanced_accuracy_default": 0.9162984781541483,
+  "balanced_accuracy_opt": 0.9162984781541483,
+  "roc_auc": 0.9587628865979383
+}

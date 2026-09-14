@@ -6,3 +6,17 @@ __pycache__/
 outputs/
 *.sqlite
 *.db
+# Ambientes / IDE
+venv/
+.idea/
+.DS_Store
+
+# Dados brutos (não versionar - vem do time técnico, não do candidato;
+# ~18MB e específico da entrega, cada um roda run_pipeline.py pra gerar o resto)
+Dados/
+
+# Artefatos intermediários e pesados (regeneráveis com `python run_pipeline.py`)
+prepared/
+outputs/biosensor_case.db
+outputs/voltammograms_long.csv
+outputs_advanced/stage_diff_dataset.csv
