@@ -1,3 +1,21 @@
+# Projeto FIEP — monitoramento microbiológico por voltametria + ML
+
+> **Pipeline de produção (pacote `fiep/`)**: ingestão de `.nox` do NOVA e de tabelas,
+> controle de qualidade, pré-processamento, treino com registro de modelos e predição —
+> ver [`docs/PIPELINE.md`](docs/PIPELINE.md).
+>
+> ```bash
+> pip install -e ".[dev]"
+> fiep tudo --entrada Dados          # treina com os dados do case
+> fiep prever --entrada nova_coleta/ # classifica medições novas
+> ```
+>
+> Ferramenta avulsa para converter `.nox` em Excel/CSV: [`tools/nox2excel.py`](tools/nox2excel.py).
+>
+> O conteúdo abaixo documenta a entrega original do case (scripts em `src/`, mantidos como referência).
+
+---
+
 # Case — Smart Biosensors: Banco de Dados e Classificação de Contaminação Bacteriana
 
 Solução para o case do Bolsista Pesquisador Machine Learning (RP 20061, Instituto SENAI de
