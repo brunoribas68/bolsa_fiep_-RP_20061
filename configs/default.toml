@@ -1,0 +1,38 @@
+# Configuração padrão da pipeline FIEP.
+# Copie este arquivo para criar variações (ex.: configs/swv.toml) e passe com --config.
+# Valores "auto" são inferidos dos dados no treino e gravados junto com o modelo.
+
+[dados]
+estagios = ["carbon_clean", "capture_probe", "capture_probe_16S_rRNA"]
+tecnica = "DPV"
+
+[qc]
+flags_aceitas = ["PASS"]          # qc_flag da planilha de metadados aceito no treino
+min_pontos = 50
+max_frac_nan = 0.02
+max_desvio_e_v = 0.020            # V: |E medido - E aplicado| tolerado (só .nox)
+max_frac_desvio_e = 0.05          # fração de pontos acima do desvio -> FAIL
+max_abs_corrente_ua = 5000.0      # µA: acima disso, sobrecarga provável -> FAIL
+fator_outlier_lote = 10.0         # |I| máx > fator x mediana (mesma técnica/estágio) -> REVIEW
+
+[preprocessamento]
+grade_inicio_v = "auto"
+grade_fim_v = "auto"
+grade_passo_v = "auto"
+scan_cv = "ultimo"
+suavizar = true
+janela_savgol = 11
+ordem_savgol = 3
+linha_de_base = "nenhuma"         # "nenhuma" | "linear_extremos"
+frac_extremos = 0.10
+
+[features]
+modo = "diferenca_estagios"       # "diferenca_estagios" | "estagio_unico"
+estagio_unico = "capture_probe_16S_rRNA"
+curva_delta_completa = true
+
+[modelo]
+candidatos = ["log_reg", "random_forest", "svm_rbf"]
+n_folds = 5
+seed = 42
+metrica = "balanced_accuracy"

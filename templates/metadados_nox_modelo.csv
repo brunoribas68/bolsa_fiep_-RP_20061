@@ -1,0 +1,4 @@
+arquivo,measurement_id,sample_id,replicate_id,sensor_state,contamination_status,qc_flag,target_bacterium,sensor_id,sensor_lot,experimental_batch,surface_type,operator_id,measurement_date,sample_log10_mean_cfu_ml
+EMPRESA1_S001_R1_carbon.nox,EMPRESA1_S001_R1_0,EMPRESA1_S001,1,carbon_clean,1,PASS,Escherichia coli,L01-S001-R1,L01,B01,Aço inox,OP01,2026-11-10,5.2
+EMPRESA1_S001_R1_probe.nox,EMPRESA1_S001_R1_1,EMPRESA1_S001,1,capture_probe,1,PASS,Escherichia coli,L01-S001-R1,L01,B01,Aço inox,OP01,2026-11-10,5.2
+EMPRESA1_S001_R1_rRNA.nox,EMPRESA1_S001_R1_2,EMPRESA1_S001,1,capture_probe_16S_rRNA,1,PASS,Escherichia coli,L01-S001-R1,L01,B01,Aço inox,OP01,2026-11-10,5.2

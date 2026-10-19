@@ -1,0 +1,35 @@
+NOX2Excel - converte arquivos .nox do NOVA (Metrohm Autolab) para Excel
+=======================================================================
+
+Não precisa instalar nada (nem Python, nem o NOVA). Funciona em Windows 10/11 (64 bits).
+
+COMO USAR
+  Opção 1: copie o NOX2Excel.exe para a pasta onde estão os arquivos .nox
+           e dê duplo clique. Ele cria um .xlsx ao lado de cada .nox.
+
+  Opção 2: arraste um ou mais .nox (ou uma pasta inteira) para cima do
+           NOX2Excel.exe.
+
+  Opção 3: dê duplo clique em uma pasta sem .nox: abre uma janela para
+           escolher os arquivos.
+
+O QUE SAI
+  Uma planilha por arquivo, com as mesmas colunas da exportação padrão do NOVA
+  (Index, Potential applied, Time, correntes, WE(1).Potential...).
+
+OPÇÕES (para quem usa o Prompt de Comando / PowerShell)
+  NOX2Excel.exe pasta\ -j -o tudo.xlsx    todos os arquivos em um único Excel
+  NOX2Excel.exe pasta\ -f csv             CSV em vez de Excel
+  NOX2Excel.exe medida.nox -c             modo completo: todos os sinais, linha de
+                                          base, picos, parâmetros e indicadores de
+                                          qualidade
+  NOX2Excel.exe --help                    lista todas as opções
+
+AVISOS
+  * Na primeira vez o Windows pode mostrar "O Windows protegeu o computador".
+    Clique em "Mais informações" -> "Executar assim mesmo". É um aviso comum para
+    programas que não são de grandes empresas.
+  * A janela preta (console) é normal: mostra o andamento e eventuais erros.
+    Se der erro, copie a mensagem e envie para quem te passou o programa.
+  * Lê arquivos do NOVA 2.x (.nox). Arquivos do NOVA 1.x (.oxw) não são suportados.
+  * Testado com DPV, SWV e CV.
