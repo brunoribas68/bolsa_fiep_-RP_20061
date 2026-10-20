@@ -1,8 +1,8 @@
 """Linha de comando da pipeline FIEP (`fiep <comando>` ou `python -m fiep <comando>`).
 
 Fluxo principal:
-    fiep planilha    --entrada dados/treino            # planilha de metadados do lote de .nox
-    fiep db importar --entrada dados/treino            # grava no banco (dados/fiep.db) e roda o QC
+    fiep planilha    --entrada dados/empresa1          # planilha de metadados do lote de .nox
+    fiep db importar --entrada dados                   # grava no banco (dados/fiep.db) e roda o QC
     fiep experimento --artigo                         # divide dados/ em 50/25/25 (+ pastas)
     fiep servir                                        # página web + API com o modelo registrado
     fiep prever      --entrada nova_coleta/ --db dados/fiep.db
@@ -159,7 +159,8 @@ def _planilha(a):
     destino, n = gerar_planilha(a.entrada, cfg=load_config(a.config))
     print(f"{n} arquivo(s) novo(s) adicionados em {destino}")
     print("Preencha sample_id, replicate_id, sensor_state e contamination_status e depois rode:")
-    print(f"  fiep db importar --entrada {a.entrada}")
+    print("  fiep db importar --entrada dados")
+    print("  fiep experimento --artigo")
 
 
 def _db(a):

@@ -112,6 +112,41 @@ def _ids(ds: Dataset | None) -> set:
     return set(ds.medicoes["sample_id"].dropna()) if ds is not None else set()
 
 
+def diagnosticar(ds: Dataset | None, cfg: dict | None = None) -> str:
+    """Explica, em português, por que os dados lidos ainda não servem para treinar."""
+    if ds is None or not len(ds.medicoes):
+        return "Nenhuma medição foi lida (há .nox ou tabelas na pasta?)."
+    m = ds.medicoes
+    estagios = list((cfg or {}).get("dados", {}).get("estagios") or
+                    ["carbon_clean", "capture_probe", "capture_probe_16S_rRNA"])
+    tecnica = (cfg or {}).get("dados", {}).get("tecnica", "DPV")
+    linhas = [f"Foram lidas {len(m)} medições de {m['arquivo_origem'].nunique()} arquivo(s)."]
+    if "tecnica" in m and m["tecnica"].notna().any():
+        tec = m["tecnica"].value_counts().to_dict()
+        linhas.append(f"  Técnicas: {tec}." + ("" if tec.get(tecnica) else f" Nenhuma é {tecnica}, a usada no treino."))
+    sem_id = m["sample_id"].isna()
+    if sem_id.any():
+        arqs = m.loc[sem_id, "arquivo_origem"].dropna().unique()
+        linhas.append(f"  {sem_id.sum()} medições sem sample_id (ex.: {', '.join(map(str, arqs[:3]))}). "
+                      "Preencha a planilha metadados_nox.csv da pasta (fiep planilha --entrada <pasta>) "
+                      "e importe de novo.")
+    sem_rot = m["sample_id"].notna() & m["contamination_status"].isna()
+    if sem_rot.any():
+        linhas.append(f"  {m.loc[sem_rot, 'sample_id'].nunique()} amostras sem contamination_status (0 ou 1).")
+    rot = m.dropna(subset=["sample_id", "contamination_status"])
+    if len(rot):
+        classes = rot.groupby("sample_id")["contamination_status"].max().astype(int).value_counts().to_dict()
+        linhas.append(f"  Amostras com rótulo: {classes} (1 = contaminada). São necessárias as duas classes.")
+        est = rot.groupby(["sample_id", "replicate_id"])["sensor_state"].apply(lambda s: set(s.dropna()))
+        completas = int(sum(set(estagios) <= e for e in est))
+        linhas.append(f"  Réplicas com os {len(estagios)} estágios ({', '.join(estagios)}): {completas} de {len(est)}.")
+        if not completas:
+            vistos = sorted(set().union(*est)) if len(est) else []
+            linhas.append(f"  Estágios encontrados: {vistos or 'nenhum'}. O modelo usa a diferença entre estágios "
+                          "do mesmo eletrodo, então cada réplica precisa dos três.")
+    return "\n".join(linhas)
+
+
 def montar(soltos: Dataset | None, fixos: dict[str, Dataset | None], cfg: dict | None = None) -> Divisao:
     """Junta os dados soltos (sorteados) com os das pastas (fixos) seguindo a regra do módulo."""
     props = proporcoes(cfg)
@@ -124,6 +159,10 @@ def montar(soltos: Dataset | None, fixos: dict[str, Dataset | None], cfg: dict |
     repetidas = [s for k1 in CONJUNTOS for k2 in CONJUNTOS if k1 < k2 for s in _ids(fixos[k1]) & _ids(fixos[k2])]
     if repetidas:
         raise ValueError(f"Amostras em mais de uma pasta (treino/validacao/teste): {sorted(set(repetidas))[:10]}")
+
+    brutos = juntar(soltos, *fixos.values())
+    if brutos is not None and not _rotulos(brutos).ge(0).any():
+        raise ValueError("Os dados ainda não têm amostras rotuladas para treinar.\n" + diagnosticar(brutos, cfg))
 
     sorteio = {k: None for k in CONJUNTOS}
     if soltos is not None:
@@ -141,7 +180,8 @@ def montar(soltos: Dataset | None, fixos: dict[str, Dataset | None], cfg: dict |
         origem[k] = {"sorteadas de dados/": len(_ids(sorteio[k])), f"da pasta {k}/": len(_ids(fixos[k]))}
 
     if final["treino"] is None:
-        raise ValueError("Não há dados de treino (nem soltos em dados/ nem em dados/treino/).")
+        raise ValueError("Não há dados de treino (nem soltos em dados/ nem em dados/treino/).\n"
+                         + diagnosticar(brutos, cfg))
     # validação ou teste vazios: sorteia do treino, nas mesmas proporções
     for k in ("teste", "validacao"):
         if final[k] is None and props[k] > 0:

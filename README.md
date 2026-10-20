@@ -31,7 +31,9 @@ Requer Python 3.11 ou mais recente.
 ```bash
 # 1. coloque os .nox de um lote em dados/ (ex.: dados/empresa1/) e gere a planilha de metadados
 fiep planilha --entrada dados/empresa1
-#    preencha sample_id, replicate_id, sensor_state, contamination_status (e a carga, se houver)
+#    abra dados/empresa1/metadados_nox.csv e preencha sample_id, replicate_id, sensor_state e
+#    contamination_status (e a carga, se houver). Sem isso não há o que treinar: cada réplica
+#    precisa dos 3 estágios do sensor (carbon_clean, capture_probe, capture_probe_16S_rRNA)
 
 # 2. importe para o banco (dados/fiep.db) — roda o controle de qualidade
 fiep db importar --entrada dados

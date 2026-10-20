@@ -73,3 +73,22 @@ def test_amostra_em_duas_pastas_e_erro(tmp_path):
     ds = ingerir(_salvar(tmp_path / "a", 6))
     with pytest.raises(ValueError, match="mais de uma pasta"):
         montar(None, {"treino": ds, "teste": ds})
+
+
+def test_sem_rotulo_explica_o_que_falta(tmp_path):
+    sinal, meta, _ = gerar_case(n_amostras=4)
+    meta["sample_id"] = None                        # planilha ainda não preenchida
+    pasta = tmp_path / "dados" / "empresa1"
+    pasta.mkdir(parents=True)
+    sinal.to_csv(pasta / "s.csv", index=False)
+    meta.to_csv(pasta / "m.csv", index=False)
+    with pytest.raises(ValueError, match="sem sample_id"):
+        de_pastas(tmp_path / "dados", load_config())
+
+
+def test_so_um_estagio_explica_os_estagios(pasta_case):
+    from fiep.divisao import diagnosticar
+    ds = ingerir(pasta_case)
+    ds.medicoes = ds.medicoes[ds.medicoes.sensor_state == "capture_probe_16S_rRNA"]
+    msg = diagnosticar(ds, load_config())
+    assert "0 de" in msg and "precisa dos três" in msg

@@ -71,6 +71,8 @@ def subconjunto(ds: Dataset, amostras) -> Dataset:
 def _tabelas(div: Divisao, cfg_v: dict):
     """Tabelas de features dos três conjuntos; a grade de potencial vem só do treino."""
     tab_tr, grade, qc_tr = montar_tabela(div.treino, cfg_v)
+    if tab_tr.empty or ROTULO not in tab_tr:
+        raise ValueError("nenhuma réplica completa no treino")
     out, qcs = {"treino": tab_tr}, [qc_tr]
     for k in ("validacao", "teste"):
         out[k] = pd.DataFrame()
@@ -80,8 +82,10 @@ def _tabelas(div: Divisao, cfg_v: dict):
                 qcs.append(q)
             except ValueError:
                 pass
-        if len(out[k]):
+        if len(out[k]) and ROTULO in out[k]:
             out[k] = out[k].dropna(subset=[ROTULO])
+        else:
+            out[k] = pd.DataFrame()
     out["treino"] = tab_tr.dropna(subset=[ROTULO])
     return out, grade, pd.concat(qcs, ignore_index=True)
 
@@ -200,7 +204,8 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
                      _fmt(linha.get("val_balanced_accuracy")), _fmt(linha.get("teste_balanced_accuracy")))
 
     if not linhas:
-        raise ValueError("Nenhuma combinação pôde ser avaliada (verifique rótulos e estágios do sensor).")
+        from .divisao import diagnosticar
+        raise ValueError("Nenhuma combinação pôde ser avaliada.\n" + diagnosticar(juntar(div.treino, div.validacao), cfg))
     placar = pd.DataFrame(linhas)
     usa_val = "val_balanced_accuracy" in placar and placar["val_balanced_accuracy"].notna().any() \
         and placar["val_roc_auc"].notna().any()
