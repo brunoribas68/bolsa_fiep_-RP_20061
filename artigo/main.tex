@@ -1,0 +1,59 @@
+% Artigo do projeto FIEP — compilar com:  latexmk -pdf main.tex   (ou Overleaf: enviar a pasta artigo/)
+% Os números, tabelas e figuras de resultados vêm de `fiep experimento --artigo` (pasta gerado/).
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[brazilian]{babel}
+\usepackage{mathptmx}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{float}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{subcaption}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+
+% Trechos que dependem de informação do laboratório aparecem em vermelho.
+\newcommand{\preencher}[1]{\textcolor{red}{[\textbf{preencher:} #1]}}
+
+% Números do experimento (gerado por fiep experimento --artigo)
+\IfFileExists{gerado/tabelas/numeros.tex}{\input{gerado/tabelas/numeros.tex}}{%
+  \newcommand{\ABteste}{--}\newcommand{\ABcv}{--}\newcommand{\MelhorModelo}{--}}
+\graphicspath{{gerado/figuras/}}
+
+\title{Detecção de contaminação microbiana em superfícies por biossensores
+eletroquímicos impressos e aprendizado de máquina}
+\author{\preencher{autores e afiliações}\\
+\small Instituto SENAI de Inovação \preencher{unidade} \quad
+\small Projeto FIEP}
+\date{}
+
+\begin{document}
+\maketitle
+
+\input{secoes/resumo}
+\input{secoes/introducao}
+\input{secoes/metodos}
+\input{secoes/resultados}
+\input{secoes/discussao}
+\input{secoes/conclusao}
+
+\section*{Disponibilidade de código e dados}
+O código da pipeline (leitura dos arquivos do potenciostato, controle de qualidade, banco de dados,
+experimentos, API) está disponível em
+\url{https://github.com/brunoribas68/bolsa_fiep_-RP_20061}. \preencher{política de disponibilidade dos dados das empresas validadoras}
+
+\section*{Agradecimentos}
+\preencher{agência de fomento, empresas validadoras, equipe do laboratório}
+
+\bibliographystyle{plainnat}
+\bibliography{referencias}
+
+\end{document}

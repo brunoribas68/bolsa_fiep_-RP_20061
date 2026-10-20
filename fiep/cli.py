@@ -1,21 +1,20 @@
-"""Linha de comando da pipeline FIEP.
+"""Linha de comando da pipeline FIEP (`fiep <comando>` ou `python -m fiep <comando>`).
 
-Banco de dados (SQLite, padrão dados/fiep.db):
-    python -m fiep db importar --entrada Dados          # lê .nox/tabelas, grava no banco e roda o QC
-    python -m fiep db resumo
-    python -m fiep db exportar --saida banco.xlsx       # ou --formato csv --saida pasta/
-    python -m fiep db sql "SELECT * FROM v_replicatas LIMIT 10"
-    python -m fiep treinar --db dados/fiep.db [--filtro "tecnica = 'DPV'"]
-    python -m fiep prever  --entrada nova_coleta/ --db dados/fiep.db   # grava as previsões no banco
+Fluxo principal:
+    fiep planilha    --entrada dados/treino            # planilha de metadados do lote de .nox
+    fiep db importar --entrada dados/treino            # grava no banco (dados/fiep.db) e roda o QC
+    fiep experimento --treino dados/treino --validacao dados/validacao --artigo
+    fiep servir                                        # página web + API com o modelo registrado
+    fiep prever      --entrada nova_coleta/ --db dados/fiep.db
 
-Sem banco (arquivos CSV):
-    python -m fiep ingerir --entrada Dados --saida dados/processados
-    python -m fiep qc      --dados dados/processados
-    python -m fiep treinar --dados dados/processados [--config configs/default.toml]
-    python -m fiep prever  --entrada nova_coleta/ [--modelo modelos] --saida resultado.csv
-    python -m fiep tudo    --entrada Dados          # ingerir + treinar
+Banco:
+    fiep db resumo | fiep db sql "SELECT ..." | fiep db exportar --saida dados/fiep_banco.xlsx
 
-Depois de `pip install -e .`, o mesmo vale como `fiep <comando> ...`.
+Treino simples (sem comparar variantes) e fluxo só com arquivos:
+    fiep treinar --db dados/fiep.db
+    fiep ingerir --entrada dados/treino --saida dados/processados
+    fiep qc      --dados dados/processados
+    fiep tudo    --entrada dados/treino
 """
 from __future__ import annotations
 
@@ -88,6 +87,76 @@ def _prever(a):
     if a.saida:
         res.to_csv(a.saida, index=False)
         print(f"\nSalvo em {a.saida}")
+
+
+def _experimento(a):
+    import shutil
+    from .experimentos import rodar
+    from .ingest import ingerir
+    cfg = load_config(a.config)
+    if a.db:
+        from . import db
+        con = db.conectar(a.db)
+        ds = db.carregar(con, a.filtro)
+        ds_val = db.carregar(con, a.filtro_validacao) if a.filtro_validacao else None
+        if ds_val is not None:          # o que é validação não entra no treino
+            ids = set(ds_val.medicoes["sample_id"])
+            from .experimentos import subconjunto
+            ds = subconjunto(ds, set(ds.medicoes["sample_id"]) - ids)
+    else:
+        ds = ingerir(a.treino)
+        ds_val = ingerir(a.validacao) if a.validacao and _tem_dados(a.validacao) else None
+    print(f"Treino: {ds.medicoes['sample_id'].nunique()} amostras | "
+          f"validação externa: {'sim, ' + str(ds_val.medicoes['sample_id'].nunique()) + ' amostras' if ds_val is not None else 'não (teste = 20% separado)'}")
+    r = rodar(ds, cfg, ds_val, saida=a.saida, pasta_modelos=a.modelos, rapido=a.rapido)
+    cols = ["posicao", "variante", "modelo", "cv_balanced_accuracy", "cv_ba_desvio", "cv_roc_auc",
+            "teste_balanced_accuracy", "teste_roc_auc"]
+    print("\nTop 10 (ordenado pela validação cruzada no treino):")
+    print(r["placar"][[c for c in cols if c in r["placar"]]].head(10).round(3).to_string(index=False))
+    if len(r["regressao"]):
+        print("\nRegressão da carga (log10 UFC/mL, contaminadas):")
+        print(r["regressao"].round(3).to_string(index=False))
+    res = r["resumo"]
+    if res.get("formula_sisso"):
+        print(f"\nSISSO: {res['formula_sisso']}")
+    print(f"\nResultados em {r['pasta']}" + (f" | modelo registrado: {res.get('modelo_registrado')}" if res.get("modelo_registrado") else ""))
+    if a.artigo:
+        destino = Path(a.artigo_pasta)
+        for sub in ("figuras", "tabelas"):
+            (destino / sub).mkdir(parents=True, exist_ok=True)
+            for f in (r["pasta"] / sub).glob("*"):
+                shutil.copy2(f, destino / sub / f.name)
+        print(f"Figuras e tabelas copiadas para {destino}/")
+
+
+def _tem_dados(pasta) -> bool:
+    p = Path(pasta)
+    return p.exists() and any(x.suffix.lower() in {".nox", ".csv", ".xlsx"} for x in p.rglob("*"))
+
+
+def _servir(a):
+    import os
+    try:
+        import uvicorn
+    except ImportError:
+        raise ValueError('instale as dependências da API: pip install -e ".[api]"')
+    raiz = Path(__file__).resolve().parents[1]
+    if not (raiz / "api" / "app.py").exists():
+        raise FileNotFoundError("pasta api/ não encontrada: rode a partir do repositório do projeto")
+    sys.path.insert(0, str(raiz))
+    os.environ.setdefault("FIEP_MODELOS", str(Path(a.modelos).resolve()))
+    if a.db:
+        os.environ["FIEP_DB"] = str(Path(a.db).resolve())
+    print(f"Abra http://{a.host}:{a.porta} no navegador (Ctrl+C para parar)")
+    uvicorn.run("api.app:app", host=a.host, port=a.porta, reload=False)
+
+
+def _planilha(a):
+    from .planilha import gerar_planilha
+    destino, n = gerar_planilha(a.entrada, cfg=load_config(a.config))
+    print(f"{n} arquivo(s) novo(s) adicionados em {destino}")
+    print("Preencha sample_id, replicate_id, sensor_state e contamination_status e depois rode:")
+    print(f"  fiep db importar --entrada {a.entrada}")
 
 
 def _db(a):
@@ -164,6 +233,32 @@ def main(argv=None):
     p.add_argument("--saida")
     p.add_argument("--db", help="gravar as previsões neste banco SQLite")
     p.set_defaults(fn=_prever)
+
+    p = sub.add_parser("experimento", help="compara variantes de features x modelos e registra o melhor")
+    p.add_argument("--treino", default="dados/treino", help="pasta de treino (.nox + planilha e/ou tabelas)")
+    p.add_argument("--validacao", default="dados/validacao", help="validação externa (opcional; vazia = 20%% separado)")
+    p.add_argument("--db", help="usar o banco SQLite em vez das pastas")
+    p.add_argument("--filtro", help="filtro SQL do treino (com --db)")
+    p.add_argument("--filtro-validacao", help="filtro SQL que define a validação externa (com --db)")
+    p.add_argument("--config")
+    p.add_argument("--saida", default="resultados")
+    p.add_argument("--modelos", default="modelos")
+    p.add_argument("--rapido", action="store_true", help="menos variantes e modelos (para testar)")
+    p.add_argument("--artigo", action="store_true", help="copiar figuras e tabelas para o artigo")
+    p.add_argument("--artigo-pasta", default="artigo/gerado")
+    p.set_defaults(fn=_experimento)
+
+    p = sub.add_parser("servir", help="abre a página web e a API de previsão")
+    p.add_argument("--modelos", default="modelos")
+    p.add_argument("--db", help="gravar as previsões feitas pela página neste banco")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--porta", type=int, default=8000)
+    p.set_defaults(fn=_servir)
+
+    p = sub.add_parser("planilha", help="cria/completa a planilha de metadados de um lote de .nox")
+    p.add_argument("--entrada", required=True, help="pasta com os .nox (ex.: dados/treino)")
+    p.add_argument("--config")
+    p.set_defaults(fn=_planilha)
 
     p = sub.add_parser("db", help="banco de dados SQLite: importar, resumo, exportar, sql")
     p.add_argument("acao", choices=["importar", "resumo", "exportar", "sql"])

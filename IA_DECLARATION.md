@@ -1,5 +1,17 @@
 # Declaração de uso de ferramentas de IA
 
+## Projeto FIEP (pipeline, banco de dados, API e artigo)
+
+Foi utilizada uma ferramenta de IA (Claude, da Anthropic) como apoio no desenvolvimento do código
+deste repositório: leitor dos arquivos `.nox` do NOVA, pipeline de ingestão e controle de
+qualidade, banco de dados SQLite, módulo de experimentos (incluindo a implementação simplificada do
+SISSO), API e página web, notebook, testes, documentação e a estrutura e primeira redação do
+artigo. As escolhas de método (alvo, protocolo de validação, critérios de qualidade), a revisão do
+código e dos resultados e o texto final do artigo são de responsabilidade do autor.
+
+## Entrega original do case (histórico)
+
+
 Foi utilizada uma ferramenta de IA (Claude, da Anthropic) como apoio ao longo do
 desenvolvimento desta entrega, nas seguintes atividades:
 

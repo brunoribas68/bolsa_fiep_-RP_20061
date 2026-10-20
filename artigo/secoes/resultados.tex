@@ -1,0 +1,90 @@
+\section{Resultados}
+
+\noindent\preencher{Os números abaixo são gerados automaticamente pelo último
+\texttt{fiep experimento --artigo} (experimento \ExpId). Enquanto os dados das empresas não forem
+incorporados, eles se referem ao conjunto de demonstração do projeto; apagar esta nota ao usar os
+dados reais.}
+
+\subsection{Conjunto de dados e controle de qualidade}
+O conjunto de treino teve \NAmostrasTreino{} amostras (\NReplicasTreino{} réplicas com os três
+estágios aprovados no controle de qualidade) e o de teste \NAmostrasTeste{} amostras
+(\NReplicasTeste{} réplicas), separado como \TipoTeste. \preencher{número de medições reprovadas
+no controle de qualidade e principais motivos, a partir de \texttt{fiep db resumo}}
+
+\subsection{Efeito da hibridização no sinal}
+A Figura~\ref{fig:curvas} mostra a curva média de diferença entre o último e o penúltimo estágio.
+Nas amostras contaminadas, a corrente diminui na região do pico do par ferri/ferrocianeto, o que é
+compatível com o bloqueio da transferência de carga após a hibridização do alvo.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.62\textwidth]{curvas_diferenca.png}
+\caption{Curva de diferença entre estágios (média $\pm$ 1 desvio-padrão) por classe, conjunto de treino.}
+\label{fig:curvas}
+\end{figure}
+
+\subsection{Comparação de representações e modelos}
+Foram avaliadas \NCombinacoes{} combinações (Figura~\ref{fig:comparacao},
+Tabela~\ref{tab:classificacao}). A combinação escolhida pela validação cruzada foi
+\MelhorModelo{} com a representação \MelhorVariante, com acurácia balanceada de
+\ABcv{} $\pm$ \ABcvDP{} e AUC de \AUCcv. No conjunto de teste, ela obteve acurácia balanceada de
+\ABteste, sensibilidade de \SENSteste, especificidade de \ESPECteste{} e AUC de \AUCteste{}
+(limiar de \Limiar).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{comparacao_modelos.png}
+\caption{Acurácia balanceada média na validação cruzada agrupada (treino) para cada representação e modelo.}
+\label{fig:comparacao}
+\end{figure}
+
+\begin{table}[H]
+\centering\footnotesize
+\caption{Dez melhores combinações pela validação cruzada no treino e o desempenho de cada uma no
+teste. AB: acurácia balanceada (média $\pm$ desvio-padrão entre dobras).}
+\label{tab:classificacao}
+\IfFileExists{gerado/tabelas/tabela_classificacao.tex}{\input{gerado/tabelas/tabela_classificacao.tex}}{\preencher{rodar fiep experimento --artigo}}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.48\textwidth}\centering
+\includegraphics[width=\textwidth]{roc_teste.png}\caption{Curvas ROC no teste.}\end{subfigure}
+\hfill
+\begin{subfigure}{0.42\textwidth}\centering
+\includegraphics[width=\textwidth]{matriz_confusao_teste.png}\caption{Matriz de confusão do modelo escolhido.}\end{subfigure}
+\caption{Desempenho no conjunto de teste.}
+\label{fig:teste}
+\end{figure}
+
+\subsection{Interpretação}
+A importância por permutação (Figura~\ref{fig:importancia}) indica as regiões de potencial que mais
+pesam na decisão. O SISSO simplificado encontrou o descritor
+\begin{center}\small\FormulaSISSO\end{center}
+cuja forma explícita permite discutir o mecanismo com a equipe experimental.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.6\textwidth]{importancia.png}
+\caption{Importância por permutação das características no conjunto de teste (queda da acurácia balanceada).}
+\label{fig:importancia}
+\end{figure}
+
+\subsection{Estimativa da carga bacteriana}
+Nas amostras contaminadas, o melhor regressor (\RegModelo) teve RMSE de \RegRMSEcv{}
+log$_{10}$\,UFC/mL na validação cruzada e de \RegRMSEteste{} no teste ($R^2 = \RegRdoisTeste$)
+(Tabela~\ref{tab:regressao}, Figura~\ref{fig:regressao}).
+
+\begin{table}[H]
+\centering\small
+\caption{Regressão da carga bacteriana (log$_{10}$\,UFC/mL) nas amostras contaminadas.}
+\label{tab:regressao}
+\IfFileExists{gerado/tabelas/tabela_regressao.tex}{\input{gerado/tabelas/tabela_regressao.tex}}{\preencher{rodar fiep experimento --artigo}}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.45\textwidth]{regressao_teste.png}
+\caption{Carga prevista versus plaqueamento no conjunto de teste.}
+\label{fig:regressao}
+\end{figure}

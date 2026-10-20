@@ -1,37 +1,53 @@
+# Python
 __pycache__/
 *.pyc
-.venv/
-.env
-.ipynb_checkpoints/
-outputs/
-*.sqlite
-*.db
-# Ambientes / IDE
-venv/
-.idea/
-.DS_Store
-
-# Dados brutos (não versionar - vem do time técnico, não do candidato;
-# ~18MB e específico da entrega, cada um roda run_pipeline.py pra gerar o resto)
-Dados/
-
-# Artefatos intermediários e pesados (regeneráveis com `python run_pipeline.py`)
-prepared/
-outputs/biosensor_case.db
-outputs/voltammograms_long.csv
-outputs_advanced/stage_diff_dataset.csv
-
-# --- Pipeline FIEP (fiep/) ---
-# Dados reais do projeto NUNCA vão para o Git (repositório público).
-*.nox
-dados/
-nova_coleta/
-modelos/
-mlruns/
-mlartifacts/
-*.joblib
-resultado*.csv
-.pytest_cache/
 *.egg-info/
 build/
 dist/
+.pytest_cache/
+.ipynb_checkpoints/
+.venv/
+venv/
+.env
+
+# IDE / sistema
+.idea/
+.vscode/
+.DS_Store
+
+# ---- Dados reais do projeto: NUNCA vão para o Git (repositório público) ----
+*.nox
+dados/*
+!dados/README.md
+!dados/exemplo_case/
+!dados/treino/
+!dados/validacao/
+dados/treino/*
+dados/validacao/*
+!dados/treino/.gitkeep
+!dados/validacao/.gitkeep
+!dados/treino/LEIA-ME.md
+!dados/validacao/LEIA-ME.md
+*.db
+*.db-wal
+*.db-shm
+
+# Saídas geradas (regeneráveis)
+modelos/
+resultados/
+mlruns/
+mlartifacts/
+*.joblib
+nova_coleta/
+
+# Artigo: arquivos auxiliares do LaTeX
+artigo/*.aux
+artigo/*.log
+artigo/*.out
+artigo/*.toc
+artigo/*.bbl
+artigo/*.blg
+artigo/*.fls
+artigo/*.fdb_latexmk
+artigo/*.synctex.gz
+artigo/*.pdf

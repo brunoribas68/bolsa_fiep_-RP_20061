@@ -1,0 +1,19 @@
+\begin{abstract}
+O monitoramento microbiológico de superfícies na indústria depende hoje de plaqueamento, que leva
+dias para gerar resultado. Este trabalho apresenta uma plataforma que combina biossensores
+eletroquímicos impressos (eletrodos de carbono com sonda de captura para rRNA 16S), aquisição por
+voltametria de pulso diferencial (DPV) e aprendizado de máquina para classificar superfícies como
+contaminadas ou não contaminadas e estimar a carga bacteriana. Os voltamogramas são lidos
+diretamente dos arquivos do potenciostato, passam por controle de qualidade automático e são
+organizados em um banco de dados rastreável. A característica mais informativa foi a curva de
+diferença entre estágios do sensor no mesmo eletrodo (antes e depois do contato com o alvo).
+Foram comparadas \NCombinacoes{} combinações de pré-processamento e modelo por validação cruzada
+agrupada por amostra; o modelo escolhido (\MelhorModelo, \MelhorVariante) obteve acurácia
+balanceada de \ABcv{} na validação cruzada e de \ABteste{} no conjunto de teste
+(\TipoTeste), com AUC de \AUCteste. A carga bacteriana das amostras contaminadas foi estimada com
+RMSE de \RegRMSEteste{} log$_{10}$\,UFC/mL. \preencher{revisar após o experimento com os dados
+reais das empresas validadoras}
+
+\medskip\noindent\textbf{Palavras-chave:} biossensor eletroquímico; voltametria de pulso
+diferencial; rRNA 16S; aprendizado de máquina; monitoramento de superfícies; ISO 18593.
+\end{abstract}

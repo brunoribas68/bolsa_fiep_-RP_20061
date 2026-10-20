@@ -1,0 +1,18 @@
+\begin{tabular}{rllcccccc}
+\toprule
+ & & & \multicolumn{2}{c}{Validação cruzada (treino)} & \multicolumn{4}{c}{Teste} \\
+\cmidrule(lr){4-5}\cmidrule(lr){6-9}
+\# & Variante & Modelo & AB & AUC & AB & Sens. & Espec. & AUC \\
+\midrule
+1 & dif\_curva\_linha\_base & log\_reg\_l1 & 0,948 $\pm$ 0,022 & 0,977 & 0,946 & 0,934 & 0,958 & 0,983 \\
+2 & dif\_curva\_sem\_suavizar & log\_reg\_l1 & 0,946 $\pm$ 0,038 & 0,976 & 0,932 & 0,947 & 0,917 & 0,976 \\
+3 & dif\_curva & log\_reg\_l1 & 0,941 $\pm$ 0,033 & 0,976 & 0,911 & 0,947 & 0,875 & 0,982 \\
+4 & dif\_curva\_linha\_base & log\_reg\_C0.1 & 0,938 $\pm$ 0,034 & 0,973 & 0,953 & 0,947 & 0,958 & 0,979 \\
+5 & dif\_curva\_linha\_base & log\_reg & 0,936 $\pm$ 0,025 & 0,976 & 0,953 & 0,947 & 0,958 & 0,976 \\
+6 & dif\_curva\_linha\_base & log\_reg\_C0.01 & 0,935 $\pm$ 0,037 & 0,967 & 0,953 & 0,947 & 0,958 & 0,985 \\
+7 & dif\_curva & log\_reg & 0,934 $\pm$ 0,052 & 0,977 & 0,919 & 0,921 & 0,917 & 0,974 \\
+8 & dif\_curva\_sem\_suavizar & log\_reg\_C0.01 & 0,933 $\pm$ 0,051 & 0,970 & 0,953 & 0,947 & 0,958 & 0,980 \\
+9 & dif\_curva & log\_reg\_C0.1 & 0,932 $\pm$ 0,043 & 0,972 & 0,946 & 0,934 & 0,958 & 0,977 \\
+10 & dif\_curva & lda & 0,930 $\pm$ 0,020 & 0,976 & 0,953 & 0,947 & 0,958 & 0,965 \\
+\bottomrule
+\end{tabular}

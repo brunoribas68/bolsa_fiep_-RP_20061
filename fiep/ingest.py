@@ -34,11 +34,12 @@ log = logging.getLogger(__name__)
 
 EXT_TABELA = {".csv", ".txt", ".xlsx", ".xls"}
 
+# a ordem importa: a planilha dos .nox também tem as colunas dos metadados, então vem antes
 PAPEIS = {
+    "indice_nox": {"arquivo", "sample_id"},
     "sinal": {"measurement_id", "potential_v", "current_ua"},
     "metadados": {"measurement_id", "sample_id", "contamination_status"},
     "plaqueamento": {"sample_id", "colony_count"},
-    "indice_nox": {"arquivo", "sample_id"},
 }
 
 COLS_MEDICAO = [
@@ -116,7 +117,10 @@ def _ler_tabela(path: Path) -> pd.DataFrame:
     if path.suffix.lower() in {".xlsx", ".xls"}:
         df = pd.read_excel(path)
     else:
-        df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
+        try:
+            df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
+        except UnicodeDecodeError:          # CSV salvo pelo Excel em português (Windows-1252)
+            df = pd.read_csv(path, sep=None, engine="python", encoding="cp1252")
     df.columns = [_slug(c) for c in df.columns]
     return df
 
@@ -160,19 +164,23 @@ def _medicoes_do_case(sinal: pd.DataFrame, meta: pd.DataFrame, rel: Relatorio):
     return med, pontos
 
 
-def _medicoes_do_nox(arquivos: list[Path], indice: pd.DataFrame, rel: Relatorio):
+def _medicoes_do_nox(arquivos: list[Path], indice: pd.DataFrame, rel: Relatorio, base: Path | None = None):
     if indice.empty:
         rel.aviso(f"{len(arquivos)} arquivo(s) .nox sem planilha de metadados (coluna 'arquivo'): "
                   "serão lidos, mas ficam sem rótulo nem amostra.")
         indice = pd.DataFrame({"arquivo": [a.name for a in arquivos]})
-    indice = indice.copy()
-    indice["arquivo"] = indice["arquivo"].astype(str).str.strip()
+    indice = indice.copy().replace(r"^\s*$", np.nan, regex=True)
+    indice = indice.dropna(subset=["arquivo"])
+    indice["arquivo"] = indice["arquivo"].astype(str).str.strip().str.replace("\\", "/", regex=False)
     por_nome = {a.name: a for a in arquivos}
     por_nome.update({a.stem: a for a in arquivos})
+    if base is not None:                     # caminho relativo (subpastas por empresa/data)
+        por_nome.update({a.relative_to(base).as_posix(): a for a in arquivos})
 
     meds, pts = [], []
     for _, linha in indice.iterrows():
-        caminho = por_nome.get(linha["arquivo"]) or por_nome.get(Path(linha["arquivo"]).stem)
+        caminho = (por_nome.get(linha["arquivo"]) or por_nome.get(Path(linha["arquivo"]).name)
+                   or por_nome.get(Path(linha["arquivo"]).stem))
         if caminho is None:
             rel.aviso(f"Arquivo listado nos metadados não encontrado: {linha['arquivo']}")
             continue
@@ -266,7 +274,7 @@ def ingerir(pasta_entrada: str | Path) -> Dataset:
         m, p = _medicoes_do_case(sinal, meta.drop(columns="__arquivo", errors="ignore"), rel)
         meds.append(m), pts.append(p)
     if noxs:
-        m, p = _medicoes_do_nox(noxs, indice.drop(columns="__arquivo", errors="ignore"), rel)
+        m, p = _medicoes_do_nox(noxs, indice.drop(columns="__arquivo", errors="ignore"), rel, base=pasta)
         if len(m):
             meds.append(m), pts.append(p)
     if not meds:

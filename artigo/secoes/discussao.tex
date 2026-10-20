@@ -1,0 +1,22 @@
+\section{Discussão}
+
+A diferença entre estágios no mesmo eletrodo foi a representação mais informativa: usar apenas o
+estágio final, ou só descritores resumidos do pico, reduziu o desempenho. Isso é coerente com o
+princípio do sensor, em que o sinal de interesse é a mudança provocada pela hibridização, e não o
+valor absoluto da corrente, que varia entre eletrodos e lotes. Na prática, o protocolo de
+aquisição precisa garantir que os três estágios sejam medidos no mesmo eletrodo e registrados na
+planilha de metadados; réplicas incompletas não podem ser classificadas.
+
+O controle de qualidade automático se mostrou necessário já nos primeiros arquivos reais do
+projeto, em que medições com sobrecarga do canal de corrente e com o potencial medido muito
+diferente do aplicado produziam curvas sem significado eletroquímico. Sem esse filtro, essas
+medições entrariam no treino como se fossem amostras. \preencher{quantificar com os dados reais}
+
+A validação agrupada por amostra e a separação do teste antes de qualquer escolha evitam o
+vazamento de informação entre treino e teste, problema frequente em aplicações de aprendizado de
+máquina \citep{kapoor2023}. Como dezenas de combinações foram comparadas, a acurácia da melhor
+combinação na validação cruzada tende a ser otimista; o valor de referência é o do conjunto de teste.
+
+\paragraph{Limitações.} \preencher{número de empresas, tipos de superfície e bactérias; variação
+entre lotes de eletrodos; necessidade de validação em campo (objetivo 7 do projeto); comparação com
+métodos rápidos comerciais, se houver}

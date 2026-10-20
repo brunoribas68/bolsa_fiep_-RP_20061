@@ -1,0 +1,89 @@
+\section{Materiais e métodos}
+
+\subsection{Biossensor e aquisição}
+Os sensores são eletrodos impressos de carbono fabricados por serigrafia em escala piloto
+\preencher{fabricante/processo, área do eletrodo de trabalho, referência e contraeletrodo}. Cada
+eletrodo é medido em três estágios: (1) carbono limpo (\texttt{carbon\_clean}); (2) após a
+imobilização da sonda de captura (\texttt{capture\_probe}) \preencher{sequência e
+concentração da sonda}; e (3) após a incubação com a amostra (\texttt{capture\_probe\_16S\_rRNA}).
+As medições foram feitas por voltametria de pulso diferencial em \preencher{eletrólito} com
+ferri/ferrocianeto \preencher{concentração} em um potenciostato Metrohm Autolab controlado pelo
+software NOVA 2, com faixa de potencial de \preencher{início} a \preencher{fim} V, passo de
+\preencher{passo} V, amplitude de modulação de \preencher{amplitude} V e tempo de modulação de
+\preencher{tempo} s.
+
+\subsection{Amostragem e referência microbiológica}
+As superfícies foram amostradas segundo a ISO~18593 \citep{iso18593} \preencher{método: swab ou
+esponja, área amostrada, número de pontos, empresas e tipos de superfície}. A carga bacteriana de
+referência foi obtida por plaqueamento em triplicata \preencher{meio, diluições, incubação}, e a
+amostra foi rotulada como contaminada quando \preencher{critério}. A carga em
+log$_{10}$\,UFC/mL foi usada como alvo da regressão.
+
+\subsection{Leitura dos arquivos e banco de dados}
+Os arquivos \texttt{.nox} gerados pelo NOVA são serializações binárias do .NET; a pipeline os lê
+diretamente, sem depender do software do fabricante, implementando o formato MS-NRBF
+\citep{msnrbf}. De cada medição são extraídos o potencial aplicado, a corrente diferencial
+($\delta i$) e, para o controle de qualidade, o potencial efetivamente medido no eletrodo e a
+corrente de base. Uma planilha de metadados liga cada arquivo à amostra, à réplica (eletrodo) e ao
+estágio do sensor. Os dados são gravados em um banco SQLite com tabelas de amostras,
+plaqueamentos, medições, pontos dos voltamogramas, resultados do controle de qualidade, modelos e
+previsões; cada arquivo importado é registrado pelo seu hash SHA-256, o que garante
+rastreabilidade e evita duplicidade.
+
+\subsection{Controle de qualidade}
+Cada medição é reprovada automaticamente quando: tem menos de 50 pontos ou mais de 2\% de pontos
+inválidos; a corrente bruta ultrapassa 5~mA (sobrecarga do canal de corrente); ou o potencial
+medido difere do aplicado em mais de 20~mV em mais de 5\% dos pontos (o potenciostato não manteve o
+potencial). Medições com corrente máxima acima de dez vezes a mediana das medições da mesma técnica
+e estágio são marcadas para revisão. O resultado é combinado com a marcação manual do laboratório,
+prevalecendo a mais restritiva. Só medições aprovadas entram no treino e na previsão.
+
+\subsection{Pré-processamento e características}
+Cada voltamograma é interpolado em uma grade comum de potencial (definida no treino e reutilizada
+na previsão) e suavizado por Savitzky--Golay \citep{savitzky1964} (janela 11, ordem 3).
+Opcionalmente, remove-se uma linha de base linear ajustada aos 10\% de pontos de cada extremo.
+Foram comparadas cinco representações (Tabela~\ref{tab:variantes}). A hipótese central é que a
+\emph{diferença} entre o último e o penúltimo estágio do mesmo eletrodo isola o efeito da
+hibridização e cancela a variação entre eletrodos.
+
+\begin{table}[H]
+\centering\small
+\caption{Representações do sinal comparadas.}\label{tab:variantes}
+\begin{tabular}{lp{10cm}}
+\toprule
+Variante & Descrição \\ \midrule
+\texttt{dif\_resumo} & descritores de cada estágio (corrente e potencial de pico, área, largura a
+meia altura) e suas diferenças entre estágios \\
+\texttt{dif\_curva} & idem, mais a curva de diferença completa (último $-$ penúltimo estágio) \\
+\texttt{dif\_curva\_linha\_base} & \texttt{dif\_curva} com remoção de linha de base linear \\
+\texttt{dif\_curva\_sem\_suavizar} & \texttt{dif\_curva} sem suavização \\
+\texttt{estagio\_final} & apenas o estágio final, sem informação dos estágios anteriores \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Modelos e protocolo de validação}
+Foram avaliados regressão logística (regularização L2 com três intensidades e L1), análise
+discriminante linear com encolhimento, SVM com núcleo RBF (calibrada), $k$ vizinhos mais
+próximos, floresta aleatória \citep{breiman2001}, \textit{extra trees}, \textit{gradient boosting}
+baseado em histogramas e uma versão simplificada do SISSO \citep{ouyang2018}, todos implementados
+com o scikit-learn \citep{pedregosa2011}. No SISSO simplificado, os descritores primários
+padronizados geram um espaço de candidatos por uma aplicação dos operadores
+$\{x, x^2, \sqrt{|x|}, \log|x|, x_i - x_j, x_i x_j, x_i/x_j\}$; a triagem por independência
+segura \citep{fan2008} mantém os 25 candidatos de maior separação entre as classes (AUC) e uma
+busca exaustiva escolhe a combinação de até dois candidatos com maior acurácia balanceada em uma
+regressão logística.
+
+O protocolo evita que medições da mesma amostra apareçam em treino e teste. Antes de qualquer
+ajuste, separa-se o conjunto de teste: as amostras de validação externa, quando disponíveis, ou
+20\% das amostras, estratificadas pela classe. No conjunto de treino, cada combinação de
+representação e modelo é avaliada por validação cruzada em cinco dobras agrupadas por amostra
+(\textit{StratifiedGroupKFold}); o limiar de decisão é o que maximiza o índice J de Youden
+\citep{youden1950} nas previsões fora da dobra. A combinação com maior acurácia balanceada média na
+validação cruzada é escolhida e só então avaliada no teste. Para a regressão da carga, usam-se as
+amostras contaminadas, validação cruzada agrupada e os modelos Ridge, PLS, SVR, floresta aleatória,
+\textit{extra trees} e \textit{gradient boosting}.
+
+As métricas de classificação são a acurácia balanceada (AB, média de sensibilidade e
+especificidade, adequada a classes desbalanceadas), sensibilidade, especificidade e área sob a
+curva ROC (AUC); para a regressão, RMSE, MAE e $R^2$ em log$_{10}$\,UFC/mL.
