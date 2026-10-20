@@ -3,7 +3,7 @@
 Fluxo principal:
     fiep planilha    --entrada dados/treino            # planilha de metadados do lote de .nox
     fiep db importar --entrada dados/treino            # grava no banco (dados/fiep.db) e roda o QC
-    fiep experimento --treino dados/treino --validacao dados/validacao --artigo
+    fiep experimento --artigo                         # divide dados/ em 50/25/25 (+ pastas)
     fiep servir                                        # página web + API com o modelo registrado
     fiep prever      --entrada nova_coleta/ --db dados/fiep.db
 
@@ -91,27 +91,30 @@ def _prever(a):
 
 def _experimento(a):
     import shutil
+    from .divisao import CONJUNTOS, de_pastas, montar, subconjunto
     from .experimentos import rodar
-    from .ingest import ingerir
     cfg = load_config(a.config)
     if a.db:
         from . import db
         con = db.conectar(a.db)
-        ds = db.carregar(con, a.filtro)
-        ds_val = db.carregar(con, a.filtro_validacao) if a.filtro_validacao else None
-        if ds_val is not None:          # o que é validação não entra no treino
-            ids = set(ds_val.medicoes["sample_id"])
-            from .experimentos import subconjunto
-            ds = subconjunto(ds, set(ds.medicoes["sample_id"]) - ids)
+        todos = db.carregar(con, a.filtro)
+        med = todos.medicoes
+        # conjunto definido na importação (pastas treino/validacao/teste) e/ou por filtro SQL
+        ids = {k: set(med.loc[med["conjunto"] == k, "sample_id"]) if "conjunto" in med else set()
+               for k in CONJUNTOS}
+        for k in CONJUNTOS:
+            if getattr(a, f"filtro_{k}"):
+                ids[k] |= set(db.carregar(con, getattr(a, f"filtro_{k}")).medicoes["sample_id"])
+        fixos = {k: subconjunto(todos, v) for k, v in ids.items() if v}
+        ja = set().union(*ids.values())
+        div = montar(subconjunto(todos, set(med["sample_id"].dropna()) - ja), fixos, cfg)
     else:
-        ds = ingerir(a.treino)
-        ds_val = ingerir(a.validacao) if a.validacao and _tem_dados(a.validacao) else None
-    print(f"Treino: {ds.medicoes['sample_id'].nunique()} amostras | "
-          f"validação externa: {'sim, ' + str(ds_val.medicoes['sample_id'].nunique()) + ' amostras' if ds_val is not None else 'não (teste = 20% separado)'}")
-    r = rodar(ds, cfg, ds_val, saida=a.saida, pasta_modelos=a.modelos, rapido=a.rapido)
-    cols = ["posicao", "variante", "modelo", "cv_balanced_accuracy", "cv_ba_desvio", "cv_roc_auc",
-            "teste_balanced_accuracy", "teste_roc_auc"]
-    print("\nTop 10 (ordenado pela validação cruzada no treino):")
+        div = de_pastas(a.dados, cfg)
+    print(div.descricao())
+    r = rodar(div, cfg, saida=a.saida, pasta_modelos=a.modelos, rapido=a.rapido)
+    cols = ["posicao", "variante", "modelo", "cv_balanced_accuracy", "cv_ba_desvio", "val_balanced_accuracy",
+            "val_roc_auc", "teste_balanced_accuracy", "teste_roc_auc"]
+    print(f"\nTop 10 (ordenado por: {r['resumo']['criterio_escolha']}):")
     print(r["placar"][[c for c in cols if c in r["placar"]]].head(10).round(3).to_string(index=False))
     if len(r["regressao"]):
         print("\nRegressão da carga (log10 UFC/mL, contaminadas):")
@@ -166,16 +169,31 @@ def _db(a):
     if a.acao == "importar":
         if not a.entrada:
             raise ValueError("informe a pasta com --entrada")
-        from .ingest import ingerir
+        from .divisao import CONJUNTOS, RESERVADAS
+        from .ingest import ingerir, tem_dados
         from .qc import avaliar
-        ds = ingerir(a.entrada)
-        r = db.importar(con, ds, origem=a.entrada)
-        n_qc = db.gravar_qc(con, avaliar(ds.medicoes, ds.pontos, load_config(a.config)))
-        print(f"Importação #{r['importacao_id']}: {r['medicoes']} medições, {r['pontos']:,} pontos, "
-              f"{r['amostras']} amostras, {r['arquivos_novos']} arquivo(s) novo(s); QC de {n_qc} medições.")
-        avisos = ds.relatorio.loc[ds.relatorio.tipo == "aviso", "detalhe"]
-        if len(avisos):
-            print("Avisos:\n  " + "\n  ".join(avisos))
+        base = Path(a.entrada)
+        # pasta de dados com treino/validacao/teste: cada parte é gravada com o seu conjunto
+        partes = [(None, base, RESERVADAS)] if tem_dados(base, RESERVADAS) else []
+        partes += [(k, base / k, ()) for k in CONJUNTOS if tem_dados(base / k)]
+        if not partes and tem_dados(base / "exemplo_case"):
+            print(f"Sem dados em {base}: importando {base / 'exemplo_case'} (demonstração).")
+            partes = [(None, base / "exemplo_case", ())]
+        if not partes:
+            raise FileNotFoundError(f"Nenhum dado em {base}")
+        if a.conjunto:
+            partes = [(a.conjunto, p, ex) for _, p, ex in partes]
+        for conjunto, pasta, excluir in partes:
+            ds = ingerir(pasta, excluir=excluir)
+            ds.medicoes["conjunto"] = conjunto
+            r = db.importar(con, ds, origem=str(pasta))
+            n_qc = db.gravar_qc(con, avaliar(ds.medicoes, ds.pontos, load_config(a.config)))
+            print(f"Importação #{r['importacao_id']} ({pasta}, conjunto: {conjunto or 'a sortear'}): "
+                  f"{r['medicoes']} medições, {r['pontos']:,} pontos, {r['amostras']} amostras, "
+                  f"{r['arquivos_novos']} arquivo(s) novo(s); QC de {n_qc} medições.")
+            avisos = ds.relatorio.loc[ds.relatorio.tipo == "aviso", "detalhe"]
+            if len(avisos):
+                print("Avisos:\n  " + "\n  ".join(avisos))
         print()
         print(db.resumo(con).to_string(index=False))
     elif a.acao == "resumo":
@@ -235,11 +253,14 @@ def main(argv=None):
     p.set_defaults(fn=_prever)
 
     p = sub.add_parser("experimento", help="compara variantes de features x modelos e registra o melhor")
-    p.add_argument("--treino", default="dados/treino", help="pasta de treino (.nox + planilha e/ou tabelas)")
-    p.add_argument("--validacao", default="dados/validacao", help="validação externa (opcional; vazia = 20%% separado)")
+    p.add_argument("--dados", default="dados",
+                   help="pasta de dados: o que estiver solto é dividido em treino/validação/teste (padrão 50/25/25); "
+                        "o que estiver em dados/treino, dados/validacao e dados/teste é somado ao conjunto da pasta")
     p.add_argument("--db", help="usar o banco SQLite em vez das pastas")
-    p.add_argument("--filtro", help="filtro SQL do treino (com --db)")
-    p.add_argument("--filtro-validacao", help="filtro SQL que define a validação externa (com --db)")
+    p.add_argument("--filtro", help="filtro SQL dos dados a dividir (com --db)")
+    p.add_argument("--filtro-treino", help="filtro SQL de amostras que vão inteiras para o treino (com --db)")
+    p.add_argument("--filtro-validacao", help="idem, para a validação (com --db)")
+    p.add_argument("--filtro-teste", help="idem, para o teste (ex.: outra empresa) (com --db)")
     p.add_argument("--config")
     p.add_argument("--saida", default="resultados")
     p.add_argument("--modelos", default="modelos")
@@ -264,7 +285,10 @@ def main(argv=None):
     p.add_argument("acao", choices=["importar", "resumo", "exportar", "sql"])
     p.add_argument("consulta", nargs="?", help="consulta SQL (para a ação sql)")
     p.add_argument("--db", default="dados/fiep.db")
-    p.add_argument("--entrada", help="pasta com .nox/tabelas (para importar)")
+    p.add_argument("--entrada", help="pasta com .nox/tabelas (para importar); com dados/, as subpastas "
+                                     "treino/validacao/teste são gravadas com o seu conjunto")
+    p.add_argument("--conjunto", choices=["treino", "validacao", "teste"],
+                   help="grava tudo o que for importado como deste conjunto")
     p.add_argument("--config")
     p.add_argument("--formato", choices=["xlsx", "csv"], default="xlsx")
     p.add_argument("--saida")

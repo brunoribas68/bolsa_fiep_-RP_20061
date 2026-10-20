@@ -1,10 +1,12 @@
 # Como a pipeline funciona
 
 ```
-dados/treino/ (.nox + planilha)  ─► ingerir ─► QC ─► banco SQLite (dados/fiep.db)
-                                                          │
-                                                          ▼
-                        experimento: teste separado ─► CV agrupada (variantes × modelos) ─► melhor
+dados/ (.nox + planilha)  ─► ingerir ─► QC ─► banco SQLite (dados/fiep.db)
+                                                   │
+                                                   ▼
+          divisão por amostra: treino 50% · validação 25% · teste 25% (+ pastas treino/ validacao/ teste/)
+                                                   │
+     treino: ajuste + CV agrupada ─► validação: escolha ─► treino+validação: re-treino ─► teste (uma vez)
                                                           │                                   │
                                      resultados/<id>/ (figuras, tabelas) ─► artigo/gerado/   modelos/<id>/
                                                                                               │
@@ -19,11 +21,11 @@ configuração, a lista de características e o limiar ficam gravados no modelo.
 
 | Comando | O que faz |
 |---|---|
-| `fiep planilha --entrada dados/treino` | cria/completa a planilha de metadados do lote de `.nox` |
-| `fiep db importar --entrada dados/treino` | lê `.nox`/tabelas, grava no banco e roda o QC |
+| `fiep planilha --entrada dados/empresa1` | cria/completa a planilha de metadados do lote de `.nox` |
+| `fiep db importar --entrada dados` | lê `.nox`/tabelas, grava no banco (com o conjunto de cada pasta) e roda o QC |
 | `fiep db resumo` / `fiep db sql "..."` / `fiep db exportar` | consulta e exporta o banco |
-| `fiep experimento [--validacao dados/validacao] [--artigo]` | compara variantes × modelos, registra o melhor, gera figuras/tabelas |
-| `fiep experimento --db dados/fiep.db --filtro-validacao "experimental_batch = 'B10'"` | idem, a partir do banco |
+| `fiep experimento [--dados dados] [--artigo]` | divide os dados, compara variantes × modelos, registra o melhor, gera figuras/tabelas |
+| `fiep experimento --db dados/fiep.db --filtro-teste "experimental_batch = 'B10'"` | idem, a partir do banco (o lote B10 vai inteiro para o teste) |
 | `fiep treinar --db dados/fiep.db` | treino rápido com a configuração padrão (sem comparar variantes) |
 | `fiep prever --entrada pasta/ [--db dados/fiep.db]` | classifica uma coleta nova com o modelo registrado |
 | `fiep servir [--db dados/fiep.db]` | página web + API |
@@ -58,16 +60,21 @@ Só a técnica de `[dados].tecnica` (padrão DPV) entra no treino.
 
 ## Experimentos (`fiep/experimentos.py`)
 
-1. **Teste separado antes de tudo**: `dados/validacao/` (validação externa) ou 20% das amostras,
-   estratificado pela classe.
+1. **Divisão por amostra** (`fiep/divisao.py`): dados soltos em `dados/` → 50% treino, 25% validação,
+   25% teste, estratificado pela classe (Hastie et al., *Elements of Statistical Learning*, 7.2;
+   proporções em `[divisao]`). Pastas `dados/treino|validacao|teste/` são somadas ao conjunto. A
+   grade de potencial é definida só no treino.
 2. **Variantes** de representação: `dif_resumo`, `dif_curva`, `dif_curva_linha_base`,
    `dif_curva_sem_suavizar`, `estagio_final`.
 3. **Modelos** (`fiep/catalogo.py`): regressão logística (L2 em 3 intensidades, L1), LDA, SVM RBF
    (2 valores de C), kNN, floresta aleatória, extra trees, gradient boosting e SISSO simplificado.
-4. **Seleção** pela acurácia balanceada média na validação cruzada agrupada por amostra (treino);
-   limiar pelo J de Youden nas previsões fora da dobra.
-5. **Teste** de todas as combinações (para a tabela), mas o escolhido é o melhor da validação cruzada.
-6. **Regressão** da carga (log10 UFC/mL) nas contaminadas: Ridge, PLS, SVR, RF, extra trees, GB.
+4. **Treino**: cada combinação é ajustada no treino; a validação cruzada agrupada por amostra
+   (StratifiedGroupKFold) dá a média ± desvio e o limiar (J de Youden nas previsões fora da dobra).
+5. **Escolha na validação**: maior acurácia balanceada no conjunto de validação (desempate: AUC na
+   validação e acurácia da CV). **Teste**: cada combinação é re-treinada com treino + validação e
+   medida no teste; o número que vale é o da combinação escolhida — o teste não escolhe nada.
+6. **Regressão** da carga (log10 UFC/mL) nas contaminadas: Ridge, PLS, SVR, RF, extra trees, GB;
+   mesmo protocolo (escolha pelo RMSE na validação).
 7. Saídas em `resultados/<id>/`: `classificacao.csv`, `regressao.csv`, `resumo.json`,
    `figuras/*.png`, `tabelas/*.tex`; o melhor modelo (+ regressor) vai para `modelos/<id>/` e
    passa a ser o usado pela API. Com `--artigo`, figuras e tabelas são copiadas para `artigo/gerado/`.
@@ -78,6 +85,6 @@ Para testar mais modelos, acrescente-os em `fiep/catalogo.py`; para outra repres
 ## Registro dos modelos
 
 `modelos/<id>/modelo.joblib` (modelo + regressor + grade + config + features + limiar) e
-`cartao.json` (métricas de CV e teste, variante, commit do código, impressão digital dos dados);
+`cartao.json` (métricas de CV, validação e teste, divisão usada, variante, commit do código, impressão digital dos dados);
 `modelos/registro.csv` acumula o histórico e `modelos/ATUAL` aponta para o modelo em uso. O banco
 também registra modelos e previsões (`docs/BANCO.md`).

@@ -47,7 +47,9 @@ def _br(x, casas=3) -> str:
 def mapa_modelos(placar: pd.DataFrame, destino: Path):
     plt = _plt()
     from matplotlib.colors import LinearSegmentedColormap
-    tab = placar.pivot_table(index="modelo", columns="variante", values="cv_balanced_accuracy")
+    col = "val_balanced_accuracy" if "val_balanced_accuracy" in placar and placar["val_balanced_accuracy"].notna().any() \
+        else "cv_balanced_accuracy"
+    tab = placar.pivot_table(index="modelo", columns="variante", values=col)
     tab = tab.loc[tab.max(axis=1).sort_values(ascending=False).index]
     cmap = LinearSegmentedColormap.from_list("azul", ["#eef4fc", "#2a78d6", "#0d3c75"])
     fig, ax = plt.subplots(figsize=(1.3 + 1.15 * tab.shape[1], 0.9 + 0.32 * tab.shape[0]))
@@ -64,7 +66,8 @@ def mapa_modelos(placar: pd.DataFrame, destino: Path):
                 escuro = (v - im.norm.vmin) / (im.norm.vmax - im.norm.vmin) > 0.55
                 ax.text(j, i, _br(v), ha="center", va="center", fontsize=7.5,
                         color="white" if escuro else TINTA, fontweight="bold" if (i, j) == melhor else "normal")
-    ax.set_title("Acurácia balanceada na validação cruzada agrupada (treino)")
+    ax.set_title("Acurácia balanceada no conjunto de validação" if col.startswith("val_")
+                 else "Acurácia balanceada na validação cruzada agrupada (treino)")
     cb = fig.colorbar(im, ax=ax, fraction=0.035, pad=0.02)
     cb.outline.set_visible(False)
     fig.savefig(destino)
@@ -197,26 +200,28 @@ def tabela_classificacao(placar: pd.DataFrame, destino: Path, n=10):
     for _, r in placar.head(n).iterrows():
         linhas.append(" & ".join([
             str(int(r["posicao"])), _tex_escape(r["variante"]), _tex_escape(r["modelo"]),
-            f"{_br(r['cv_balanced_accuracy'])} $\\pm$ {_br(r['cv_ba_desvio'])}", _br(r["cv_roc_auc"]),
+            f"{_br(r['cv_balanced_accuracy'])} $\\pm$ {_br(r['cv_ba_desvio'])}",
+            _br(r.get("val_balanced_accuracy")), _br(r.get("val_roc_auc")),
             _br(r.get("teste_balanced_accuracy")), _br(r.get("teste_sensibilidade")),
             _br(r.get("teste_especificidade")), _br(r.get("teste_roc_auc"))]) + r" \\")
     destino.write_text("\n".join([
-        r"\begin{tabular}{rllcccccc}", r"\toprule",
-        r" & & & \multicolumn{2}{c}{Validação cruzada (treino)} & \multicolumn{4}{c}{Teste} \\",
-        r"\cmidrule(lr){4-5}\cmidrule(lr){6-9}",
-        r"\# & Variante & Modelo & AB & AUC & AB & Sens. & Espec. & AUC \\", r"\midrule",
+        r"\begin{tabular}{rllccccccc}", r"\toprule",
+        r" & & & CV (treino) & \multicolumn{2}{c}{Validação} & \multicolumn{4}{c}{Teste} \\",
+        r"\cmidrule(lr){4-4}\cmidrule(lr){5-6}\cmidrule(lr){7-10}",
+        r"\# & Variante & Modelo & AB & AB & AUC & AB & Sens. & Espec. & AUC \\", r"\midrule",
         *linhas, r"\bottomrule", r"\end{tabular}", ""]), encoding="utf-8")
 
 
 def tabela_regressao(reg: pd.DataFrame, destino: Path):
     linhas = [" & ".join([_tex_escape(r["variante"]), _tex_escape(r["modelo"]), _br(r["cv_rmse"], 2),
-                          _br(r["cv_r2"], 2), _br(r.get("teste_rmse"), 2), _br(r.get("teste_r2"), 2)]) + r" \\"
+                          _br(r.get("val_rmse"), 2), _br(r.get("val_r2"), 2),
+                          _br(r.get("teste_rmse"), 2), _br(r.get("teste_r2"), 2)]) + r" \\"
               for _, r in reg.iterrows()]
     destino.write_text("\n".join([
-        r"\begin{tabular}{llcccc}", r"\toprule",
-        r" & & \multicolumn{2}{c}{Validação cruzada} & \multicolumn{2}{c}{Teste} \\",
-        r"\cmidrule(lr){3-4}\cmidrule(lr){5-6}",
-        r"Variante & Modelo & RMSE & $R^2$ & RMSE & $R^2$ \\", r"\midrule",
+        r"\begin{tabular}{llccccc}", r"\toprule",
+        r" & & CV (treino) & \multicolumn{2}{c}{Validação} & \multicolumn{2}{c}{Teste} \\",
+        r"\cmidrule(lr){3-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}",
+        r"Variante & Modelo & RMSE & RMSE & $R^2$ & RMSE & $R^2$ \\", r"\midrule",
         *linhas, r"\bottomrule", r"\end{tabular}", ""]), encoding="utf-8")
 
 
@@ -230,11 +235,18 @@ def numeros(resumo: dict, melhor: pd.Series, reg: pd.DataFrame, destino: Path):
         m("ExpId", resumo["experimento"]),
         m("TipoTeste", _tex_escape(resumo["teste"])),
         m("NAmostrasTreino", resumo["amostras_treino"]), m("NAmostrasTeste", resumo["amostras_teste"]),
+        m("NAmostrasValidacao", resumo.get("amostras_validacao", 0)),
         m("NReplicasTreino", resumo["replicas_treino"]), m("NReplicasTeste", resumo["replicas_teste"]),
+        m("NReplicasValidacao", resumo.get("replicas_validacao", 0)),
+        m("PropTreino", round(resumo.get("proporcoes", {}).get("treino", 0) * 100)),
+        m("PropValidacao", round(resumo.get("proporcoes", {}).get("validacao", 0) * 100)),
+        m("PropTeste", round(resumo.get("proporcoes", {}).get("teste", 0) * 100)),
+        m("CriterioEscolha", _tex_escape(resumo.get("criterio_escolha", "validação cruzada no treino"))),
         m("NCombinacoes", resumo["combinacoes_avaliadas"]),
         m("MelhorModelo", _tex_escape(melhor["modelo"])), m("MelhorVariante", _tex_escape(melhor["variante"])),
         m("ABcv", _br(melhor["cv_balanced_accuracy"])), m("ABcvDP", _br(melhor["cv_ba_desvio"])),
         m("AUCcv", _br(melhor["cv_roc_auc"])),
+        m("ABval", _br(melhor.get("val_balanced_accuracy"))), m("AUCval", _br(melhor.get("val_roc_auc"))),
         m("ABteste", _br(melhor.get("teste_balanced_accuracy"))),
         m("SENSteste", _br(melhor.get("teste_sensibilidade"))),
         m("ESPECteste", _br(melhor.get("teste_especificidade"))),
@@ -242,6 +254,7 @@ def numeros(resumo: dict, melhor: pd.Series, reg: pd.DataFrame, destino: Path):
         m("Limiar", _br(melhor["limiar"], 2)),
         m("RegModelo", _tex_escape(r0["modelo"]) if r0 is not None else "--"),
         m("RegRMSEcv", _br(r0["cv_rmse"], 2) if r0 is not None else "--"),
+        m("RegRMSEval", _br(r0.get("val_rmse"), 2) if r0 is not None else "--"),
         m("RegRMSEteste", _br(r0.get("teste_rmse"), 2) if r0 is not None else "--"),
         m("RegRdoisTeste", _br(r0.get("teste_r2"), 2) if r0 is not None else "--"),
         m("FormulaSISSO", _formula_tex(resumo.get("formula_sisso"))),
@@ -279,7 +292,7 @@ def gerar_todas(pasta: Path, placar, prob_teste, melhor_chave, tabelas, reg, reg
         else next((v for v in tabelas if any(str(c).startswith("D_") for c in tabelas[v][0].columns)), None)
     if v_curva:
         curvas_diferenca(tabelas[v_curva][0], fig / "curvas_diferenca.png")
-    tab_tr, tab_te, _, feats, _, _ = tabelas[melhor_chave[0]]
+    tab_tr, _, tab_te, _, feats, _, _ = tabelas[melhor_chave[0]]
     if len(tab_te):
         imp = importancia(modelo_final, tab_te.reindex(columns=feats).astype(float),
                           tab_te["contamination_status"].astype(int).to_numpy(), fig / "importancia.png")

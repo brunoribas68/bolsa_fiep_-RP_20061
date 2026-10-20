@@ -12,10 +12,13 @@ projeto, em que medições com sobrecarga do canal de corrente e com o potencial
 diferente do aplicado produziam curvas sem significado eletroquímico. Sem esse filtro, essas
 medições entrariam no treino como se fossem amostras. \preencher{quantificar com os dados reais}
 
-A validação agrupada por amostra e a separação do teste antes de qualquer escolha evitam o
-vazamento de informação entre treino e teste, problema frequente em aplicações de aprendizado de
-máquina \citep{kapoor2023}. Como dezenas de combinações foram comparadas, a acurácia da melhor
-combinação na validação cruzada tende a ser otimista; o valor de referência é o do conjunto de teste.
+A divisão por amostra em treino, validação e teste evita o vazamento de informação entre os
+conjuntos, problema frequente em aplicações de aprendizado de máquina \citep{kapoor2023}. Como
+dezenas de combinações foram comparadas, a acurácia da melhor combinação na validação tende a ser
+otimista; o valor de referência é o do conjunto de teste, que não participou de nenhuma escolha.
+Com poucas amostras, a estimativa de um único conjunto de teste tem variância alta
+\citep{vabalas2019}; por isso a validação cruzada no treino é relatada junto, e a validação externa
+em coletas independentes (objetivo 7) é a avaliação definitiva.
 
 \paragraph{Limitações.} \preencher{número de empresas, tipos de superfície e bactérias; variação
 entre lotes de eletrodos; necessidade de validação em campo (objetivo 7 do projeto); comparação com

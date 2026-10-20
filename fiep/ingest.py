@@ -101,6 +101,30 @@ class Dataset:
         )
 
 
+def juntar(*conjuntos: "Dataset | None") -> "Dataset | None":
+    """Une Datasets (ex.: dados soltos + pasta). Medições repetidas: fica a primeira."""
+    cs = [d for d in conjuntos if d is not None and len(d.medicoes)]
+    if not cs:
+        return None
+    if len(cs) == 1:
+        return cs[0]
+
+    def cat(attr, chave=None):
+        df = _concat([getattr(d, attr) for d in cs if len(getattr(d, attr))])
+        return df.drop_duplicates(chave) if chave and len(df) else df
+
+    vistos: set = set()
+    meds, ptss = [], []
+    for d in cs:                                # cada medição vem inteira de um único conjunto
+        novos = ~d.medicoes["measurement_id"].isin(vistos)
+        meds.append(d.medicoes[novos])
+        ptss.append(d.pontos[d.pontos["measurement_id"].isin(set(d.medicoes.loc[novos, "measurement_id"]))])
+        vistos |= set(d.medicoes["measurement_id"])
+    med, pts = _concat(meds), _concat(ptss)
+    return Dataset(med.reset_index(drop=True), pts.reset_index(drop=True), cat("amostras", "sample_id"),
+                   cat("relatorio"), cat("plaqueamento"), cat("arquivos"))
+
+
 def sha256_arquivo(path: Path) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -241,14 +265,32 @@ def _amostras(med: pd.DataFrame, plaq: pd.DataFrame, rel: Relatorio) -> pd.DataF
     return am
 
 
-def ingerir(pasta_entrada: str | Path) -> Dataset:
-    """Lê tudo o que houver na pasta e devolve o Dataset canônico."""
+def arquivos_de_dados(pasta: str | Path, excluir: tuple[str, ...] = ()) -> tuple[list[Path], list[Path]]:
+    """(.nox, tabelas) da pasta e subpastas, ignorando as subpastas de primeiro nível em `excluir`."""
+    pasta = Path(pasta)
+
+    def ok(p: Path) -> bool:
+        partes = p.relative_to(pasta).parts
+        return p.is_file() and not (len(partes) > 1 and partes[0] in excluir)
+
+    todos = [p for p in pasta.rglob("*") if ok(p)] if pasta.is_dir() else []
+    return (sorted(p for p in todos if p.suffix.lower() == ".nox"),
+            sorted(p for p in todos if p.suffix.lower() in EXT_TABELA))
+
+
+def tem_dados(pasta: str | Path, excluir: tuple[str, ...] = ()) -> bool:
+    noxs, tabelas = arquivos_de_dados(pasta, excluir)
+    return bool(noxs or tabelas)
+
+
+def ingerir(pasta_entrada: str | Path, excluir: tuple[str, ...] = ()) -> Dataset:
+    """Lê tudo o que houver na pasta (exceto as subpastas em `excluir`) e devolve o Dataset canônico."""
     pasta = Path(pasta_entrada)
     rel = Relatorio()
     buckets: dict[str, list[pd.DataFrame]] = {p: [] for p in PAPEIS}
-    noxs = sorted(pasta.rglob("*.nox"))
+    noxs, tabelas = arquivos_de_dados(pasta, excluir)
     origem = []
-    for arq in sorted(p for p in pasta.rglob("*") if p.suffix.lower() in EXT_TABELA):
+    for arq in tabelas:
         try:
             df = _ler_tabela(arq)
         except Exception as e:  # noqa: BLE001

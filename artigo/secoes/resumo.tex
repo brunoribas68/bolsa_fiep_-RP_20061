@@ -7,10 +7,10 @@ contaminadas ou não contaminadas e estimar a carga bacteriana. Os voltamogramas
 diretamente dos arquivos do potenciostato, passam por controle de qualidade automático e são
 organizados em um banco de dados rastreável. A característica mais informativa foi a curva de
 diferença entre estágios do sensor no mesmo eletrodo (antes e depois do contato com o alvo).
-Foram comparadas \NCombinacoes{} combinações de pré-processamento e modelo por validação cruzada
-agrupada por amostra; o modelo escolhido (\MelhorModelo, \MelhorVariante) obteve acurácia
-balanceada de \ABcv{} na validação cruzada e de \ABteste{} no conjunto de teste
-(\TipoTeste), com AUC de \AUCteste. A carga bacteriana das amostras contaminadas foi estimada com
+As amostras foram divididas em treino, validação e teste (\PropTreino/\PropValidacao/\PropTeste\%);
+\NCombinacoes{} combinações de pré-processamento e modelo foram ajustadas no treino e comparadas na
+validação. O modelo escolhido (\MelhorModelo, \MelhorVariante) obteve acurácia balanceada de
+\ABval{} na validação e de \ABteste{} no conjunto de teste, com AUC de \AUCteste. A carga bacteriana das amostras contaminadas foi estimada com
 RMSE de \RegRMSEteste{} log$_{10}$\,UFC/mL. \preencher{revisar após o experimento com os dados
 reais das empresas validadoras}
 

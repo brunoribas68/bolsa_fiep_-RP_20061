@@ -6,9 +6,9 @@ incorporados, eles se referem ao conjunto de demonstração do projeto; apagar e
 dados reais.}
 
 \subsection{Conjunto de dados e controle de qualidade}
-O conjunto de treino teve \NAmostrasTreino{} amostras (\NReplicasTreino{} réplicas com os três
-estágios aprovados no controle de qualidade) e o de teste \NAmostrasTeste{} amostras
-(\NReplicasTeste{} réplicas), separado como \TipoTeste. \preencher{número de medições reprovadas
+Os conjuntos de treino, validação e teste tiveram \NAmostrasTreino, \NAmostrasValidacao{} e
+\NAmostrasTeste{} amostras, respectivamente (\NReplicasTreino, \NReplicasValidacao{} e
+\NReplicasTeste{} réplicas com os três estágios aprovados no controle de qualidade). \preencher{número de medições reprovadas
 no controle de qualidade e principais motivos, a partir de \texttt{fiep db resumo}}
 
 \subsection{Efeito da hibridização no sinal}
@@ -25,23 +25,25 @@ compatível com o bloqueio da transferência de carga após a hibridização do 
 
 \subsection{Comparação de representações e modelos}
 Foram avaliadas \NCombinacoes{} combinações (Figura~\ref{fig:comparacao},
-Tabela~\ref{tab:classificacao}). A combinação escolhida pela validação cruzada foi
-\MelhorModelo{} com a representação \MelhorVariante, com acurácia balanceada de
-\ABcv{} $\pm$ \ABcvDP{} e AUC de \AUCcv. No conjunto de teste, ela obteve acurácia balanceada de
+Tabela~\ref{tab:classificacao}). A combinação escolhida na validação foi
+\MelhorModelo{} com a representação \MelhorVariante, com acurácia balanceada de \ABval{} e AUC de
+\AUCval{} na validação (\ABcv{} $\pm$ \ABcvDP{} na validação cruzada do treino). Re-treinada com
+treino e validação, ela obteve no conjunto de teste acurácia balanceada de
 \ABteste, sensibilidade de \SENSteste, especificidade de \ESPECteste{} e AUC de \AUCteste{}
 (limiar de \Limiar).
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.9\textwidth]{comparacao_modelos.png}
-\caption{Acurácia balanceada média na validação cruzada agrupada (treino) para cada representação e modelo.}
+\caption{Acurácia balanceada no conjunto de validação para cada representação e modelo.}
 \label{fig:comparacao}
 \end{figure}
 
 \begin{table}[H]
 \centering\footnotesize
-\caption{Dez melhores combinações pela validação cruzada no treino e o desempenho de cada uma no
-teste. AB: acurácia balanceada (média $\pm$ desvio-padrão entre dobras).}
+\caption{Dez melhores combinações na validação: validação cruzada no treino (média $\pm$
+desvio-padrão entre dobras), validação e teste (re-treinadas com treino + validação). AB: acurácia
+balanceada.}
 \label{tab:classificacao}
 \IfFileExists{gerado/tabelas/tabela_classificacao.tex}{\input{gerado/tabelas/tabela_classificacao.tex}}{\preencher{rodar fiep experimento --artigo}}
 \end{table}
@@ -71,8 +73,8 @@ cuja forma explícita permite discutir o mecanismo com a equipe experimental.
 \end{figure}
 
 \subsection{Estimativa da carga bacteriana}
-Nas amostras contaminadas, o melhor regressor (\RegModelo) teve RMSE de \RegRMSEcv{}
-log$_{10}$\,UFC/mL na validação cruzada e de \RegRMSEteste{} no teste ($R^2 = \RegRdoisTeste$)
+Nas amostras contaminadas, o melhor regressor (\RegModelo) teve RMSE de \RegRMSEval{}
+log$_{10}$\,UFC/mL na validação e de \RegRMSEteste{} no teste ($R^2 = \RegRdoisTeste$)
 (Tabela~\ref{tab:regressao}, Figura~\ref{fig:regressao}).
 
 \begin{table}[H]
