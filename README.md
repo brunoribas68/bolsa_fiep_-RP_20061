@@ -1,137 +1,147 @@
-# Projeto FIEP — monitoramento microbiológico por voltametria + ML
+# Projeto FIEP — monitoramento microbiológico de superfícies por voltametria + ML
 
-> **Pipeline de produção (pacote `fiep/`)**: ingestão de `.nox` do NOVA e de tabelas,
-> controle de qualidade, pré-processamento, treino com registro de modelos e predição —
-> ver [`docs/PIPELINE.md`](docs/PIPELINE.md).
->
-> ```bash
-> pip install -e ".[dev]"
-> fiep tudo --entrada Dados          # treina com os dados do case
-> fiep prever --entrada nova_coleta/ # classifica medições novas
-> ```
->
-> Ferramenta avulsa para converter `.nox` em Excel/CSV: [`tools/nox2excel.py`](tools/nox2excel.py).
->
-> O conteúdo abaixo documenta a entrega original do case (scripts em `src/`, mantidos como referência).
+Pipeline para detectar contaminação microbiana em superfícies a partir de voltamogramas de
+biossensores (eletrodos impressos com sonda de captura para rRNA 16S): leitura dos arquivos do
+potenciostato, controle de qualidade, banco de dados rastreável, treino de modelos e previsão para
+amostras novas.
 
----
+O repositório começou como a solução do case do processo seletivo (RP 20061, Instituto SENAI de
+Inovação Eletroquímica). Os scripts do case continuam em `src/` como referência; o código usado
+daqui em diante é o pacote `fiep/`.
 
-# Case — Smart Biosensors: Banco de Dados e Classificação de Contaminação Bacteriana
-
-Solução para o case do Bolsista Pesquisador Machine Learning (RP 20061, Instituto SENAI de
-Inovação Eletroquímica): organização e validação de dados de voltametria (biossensores),
-construção de um banco rastreável e classificação de contaminação microbiológica a partir do
-sinal eletroquímico.
-
-## Estrutura do repositório
+## Estrutura
 
 ```
-Dados/                      # arquivos brutos (não versionado — ver "Dados de entrada")
-src/
-  data_preparation.py       # Etapa 1: classifica arquivos pelo schema, junta e valida
-  ingest_pipeline.py        # Etapa 2: features, modelagem baseline, exportação
-  advanced_modeling.py      # Etapa 3: features de diferença entre estágios (melhoria testada)
-run_pipeline.py             # CLI único que roda as 3 etapas em sequência
-case_biossensor.ipynb       # notebook autocontido — mesma lógica, sem depender de src/
-prepared/                   # gerado — tabelas canônicas (Etapa 1)
-outputs/                    # gerado — banco de dados estruturado baseline (Etapa 2)
-outputs_advanced/           # gerado — resultado da melhoria testada (Etapa 3)
-requirements.txt
-GUIA_DEFESA.md              # notas de estudo pessoais (não é entregável do case)
+fiep/                       # pacote da pipeline (código de produção)
+  io/nox.py, io/nrbf.py     #   leitura dos arquivos .nox do NOVA (sem precisar do NOVA)
+  ingest.py                 #   junta tabelas e .nox num formato canônico
+  qc.py                     #   controle de qualidade automático
+  preprocess.py             #   grade comum de potencial, suavização, linha de base
+  features.py               #   descritores de pico e diferença entre estágios do sensor
+  model.py                  #   validação cruzada agrupada, escolha e registro do modelo
+  predict.py                #   previsão para medições novas
+  db.py                     #   banco de dados SQLite
+  cli.py                    #   comando `fiep`
+configs/default.toml        # todos os parâmetros da pipeline
+templates/                  # modelo da planilha de metadados para os .nox
+tests/                      # testes automáticos (dados sintéticos)
+tools/nox2excel.py          # conversor avulso .nox -> Excel/CSV (+ scripts para gerar o .exe)
+docs/PIPELINE.md            # como a pipeline funciona
+docs/BANCO.md               # esquema do banco e consultas úteis
+case_biossensor.ipynb       # notebook: fases 1-3 do case + Fase 4 (pipeline e banco)
+src/                        # scripts originais do case (referência)
+Dados/                      # dados do case (versionados)
+prepared/, outputs_advanced/# resultados do case (versionados)
+GUIA_DEFESA.md              # notas de estudo do case
 IA_DECLARATION.md
 ```
 
-`prepared/`, `outputs/` e `Dados/` não são versionados (ver `.gitignore`) — são grandes
-(o banco `.db` e o CSV em formato longo passam de 50MB) e 100% regeneráveis rodando o
-pipeline. `outputs/model_metrics.csv`, `outputs/voltammograms_wide.csv`,
-`outputs/feature_importance_regions.csv` etc. (os arquivos pequenos) ficam versionados como
-amostra do banco estruturado.
+Não vão para o Git (ver `.gitignore`): arquivos `.nox`, `dados/` (banco e dados processados),
+`modelos/`, `nova_coleta/`, `*.db`.
 
-## Dados de entrada
-
-O pipeline reconhece automaticamente três papéis de arquivo **pelo conjunto de colunas**, não
-pelo nome do arquivo — qualquer novo lote com esse schema é incorporado sem alterar código:
-
-| Papel | Colunas obrigatórias | Conteúdo |
-|---|---|---|
-| Sinal (voltamograma) | `measurement_id`, `potential_V`, `current_uA` | 1 linha por ponto medido |
-| Metadata | `measurement_id`, `sample_id`, `contamination_status` | liga sinal → amostra/estágio/qualidade |
-| Plaqueamento | `sample_id`, `colony_count` | referência microbiológica (CFU) por amostra |
-
-Coloque os três arquivos brutos dentro de uma pasta `Dados/` na raiz do projeto antes de
-executar (local ou Colab — não vêm versionados no repositório).
-
-## Como executar
+## Instalação
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+.venv\Scripts\activate             # Linux/Mac: source .venv/bin/activate
+pip install -e ".[dev]"
+pytest -q                          # confere a instalação
+```
+
+Requer Python 3.11 ou mais recente.
+
+## Uso rápido
+
+```bash
+# 1. importar dados para o banco (dados/fiep.db) — tabelas do case e/ou .nox
+fiep db importar --entrada Dados
+fiep db importar --entrada coleta_empresa1/
+
+# 2. treinar a partir do banco (o modelo fica em modelos/<id>/ e registrado no banco)
+fiep treinar --db dados/fiep.db
+
+# 3. prever medições novas e gravar o resultado no banco
+fiep prever --entrada nova_coleta/ --db dados/fiep.db --saida resultado.csv
+
+# consultar e exportar
+fiep db resumo
+fiep db sql "SELECT * FROM v_replicatas WHERE n_aprovadas < 3"
+fiep db exportar --saida dados/fiep_banco.xlsx
+```
+
+Sem instalar o pacote, use `python -m fiep ...` na raiz do repositório. Detalhes em
+[`docs/PIPELINE.md`](docs/PIPELINE.md) e [`docs/BANCO.md`](docs/BANCO.md).
+
+## Dados de entrada
+
+A pasta de entrada pode misturar fontes. Tabelas (`.csv`, `.xlsx`) são reconhecidas **pelas
+colunas**, não pelo nome do arquivo:
+
+| Papel | Colunas obrigatórias | Conteúdo |
+|---|---|---|
+| Sinal | `measurement_id`, `potential_V`, `current_uA` | 1 linha por ponto do voltamograma (formato do case) |
+| Metadados | `measurement_id`, `sample_id`, `contamination_status` | amostra, réplica, estágio do sensor, lote, qualidade |
+| Plaqueamento | `sample_id`, `colony_count` | referência microbiológica (UFC) por placa |
+| **Índice dos .nox** | `arquivo`, `sample_id` | 1 linha por arquivo `.nox`, com os metadados dele |
+
+**Arquivos `.nox` do NOVA** (testado com DPV, SWV e CV): coloque-os na pasta junto com a planilha de índice
+(modelo em [`templates/metadados_nox_modelo.csv`](templates/metadados_nox_modelo.csv)). Para treinar,
+cada linha precisa de `sample_id`, `replicate_id`, `sensor_state` (`carbon_clean`, `capture_probe`,
+`capture_probe_16S_rRNA`) e `contamination_status`; na previsão, `contamination_status` fica vazio.
+Do `.nox` são usados o potencial aplicado e a corrente (δi em DPV/SWV), além do potencial medido e da
+corrente bruta, que alimentam o controle de qualidade.
+
+## Controle de qualidade
+
+Cada medição é avaliada automaticamente e reprovada se tiver sobrecarga de corrente, potencial
+medido longe do aplicado, poucos pontos ou muitos pontos inválidos; correntes muito acima das do
+mesmo lote ficam em revisão. O resultado é combinado com o `qc_flag` da planilha (vale o pior) e
+fica registrado no banco. Medições reprovadas não entram no treino e, na previsão, voltam como
+"REPETIR MEDIÇÃO" com o motivo. Limites em `configs/default.toml`.
+
+## Resultado atual (dados do case)
+
+Validação cruzada em 5 dobras **agrupadas por amostra**, 200 amostras / 502 réplicas completas
+após o QC, features de diferença entre estágios do sensor:
+
+| Modelo | Acurácia balanceada | Sensibilidade | Especificidade | AUC |
+|---|---|---|---|---|
+| Regressão logística | 0,951 | 0,941 | 0,961 | 0,978 |
+| Random Forest | 0,925 | 0,912 | 0,938 | 0,970 |
+| SVM (RBF) | 0,919 | 0,893 | 0,946 | 0,965 |
+
+Em 10 amostras deixadas fora do treino (27 réplicas), todas foram classificadas corretamente.
+
+## Notebook
+
+Abra `case_biossensor.ipynb` **a partir da raiz do repositório** e rode tudo. As fases 1–3
+reproduzem a análise do case com os scripts de `src/`; a Fase 4 mostra a pipeline `fiep` passo a
+passo (ingestão, QC, pré-processamento, treino, previsão, banco de dados e `.nox` reais). Para a
+seção de `.nox`, coloque os arquivos e a planilha numa pasta `nova_coleta/`.
+
+## Scripts originais do case (`src/`)
+
+```bash
 pip install -r requirements.txt
+python src/run_pipeline.py --input-dir Dados --output-dir .          # 3 etapas do case
+python src/run_pipeline.py --input-dir Dados --output-dir . --skip-advanced
 ```
 
-### Opção A — CLI local, sem notebook (recomendado para rodar rápido/reproduzir)
+Geram `prepared/` (tabelas canônicas e relatório de qualidade), `outputs/` (banco SQLite do
+case, métricas, importância por região) e `outputs_advanced/` (comparação da abordagem de
+diferença entre estágios). Resumo da metodologia do case:
 
-```bash
-python run_pipeline.py --input-dir Dados --output-dir .
-```
+- **Baseline**: 1 medição = 1 linha (um estágio do sensor por vez) — acurácia balanceada ~50–57%.
+- **Melhoria**: 1 amostra+réplica = 1 linha, usando a *diferença* entre os estágios
+  `capture_probe_16S_rRNA` e `capture_probe` (mesmo eletrodo, antes/depois do contato com o alvo) —
+  ~90–94%. Explicação completa e checagem de vazamento de dados em `GUIA_DEFESA.md`.
+- **Validação**: sempre agrupada por `sample_id`.
 
-Isso roda as 3 etapas em sequência e cria `prepared/`, `outputs/` e `outputs_advanced/` na
-raiz do projeto. Opções úteis:
+## Segurança dos dados
 
-```bash
-# pular a etapa 3 (mais lenta — treina 5 modelos em 10 seeds cada):
-python run_pipeline.py --input-dir Dados --output-dir . --skip-advanced
-
-# mudar a política de qualidade (padrão: só qc_flag=PASS):
-python run_pipeline.py --input-dir Dados --output-dir . --keep-flags PASS REVIEW
-
-# rodar as etapas individualmente:
-python src/data_preparation.py --input-dir Dados --output-dir prepared
-python src/ingest_pipeline.py --prepared-dir prepared --output-dir outputs
-python src/advanced_modeling.py --prepared-dir prepared --output-dir outputs_advanced
-```
-
-### Opção B — Notebook (cobre as 3 fases do case + a pipeline de produção, com narrativa/gráficos)
-
-Abra `case_biossensor.ipynb` (local, Jupyter ou Google Colab) **a partir da raiz do repositório** e rode
-`Restart & Run All`. As fases 1–3 usam os scripts de `src/`; a Fase 4 usa o pacote `fiep/`
-(ingestão de `.nox`, QC automático, treino com registro de modelos e predição). Para testar a Fase 4 com
-arquivos `.nox` reais, coloque-os com a planilha de metadados numa pasta `nova_coleta/` (fora do Git).
-
-## Saídas geradas
-
-**`prepared/`** (Etapa 1): `prepared_measurements.csv`, `prepared_samples.csv`,
-`preparation_report.csv` (relatório de qualidade — duplicatas, ausências, medições órfãs).
-
-**`outputs/`** (Etapa 2, banco baseline): `voltammograms_long.csv` / `voltammograms_wide.csv`,
-`metadata_experiments.csv`, `biosensor_case.db` (SQLite, todas as tabelas), `model_metrics.csv`,
-`test_predictions.csv`, `feature_importance_regions.csv`.
-
-**`outputs_advanced/`** (Etapa 3, melhoria testada): `advanced_modeling_summary.csv`
-(comparação de modelos × abordagens), `advanced_modeling_all_seeds.csv` (10 seeds),
-`advanced_modeling_best_config_detail.json` (matriz de confusão + threshold ótimo da melhor
-configuração).
-
-## Metodologia (resumo)
-
-- **Alvo**: `contamination_status` (0/1), vindo de `metadata_*.csv`.
-- **Baseline (Etapa 2)**: 1 medição = 1 linha (um estágio do sensor por vez). Balanced
-  accuracy ~50–57% — sinal fraco.
-- **Melhoria testada (Etapa 3)**: 1 amostra+replicata = 1 linha, usando a *diferença* de sinal
-  entre os estágios `capture_probe_16S_rRNA` e `capture_probe` (mesmo eletrodo, antes/depois
-  do contato com o alvo) como feature, em vez de tratar cada estágio isoladamente. Balanced
-  accuracy sobe para ~90–94% — ver `GUIA_DEFESA.md` para a explicação completa (por que
-  funciona, checagem de vazamento de dados, trade-offs).
-- **Validação**: split treino/teste e CV sempre agrupados por `sample_id` — réplicas/estágios
-  da mesma amostra nunca ficam em treino e teste ao mesmo tempo.
-- **Modelos**: Regressão Logística, LDA, Random Forest (Etapa 2) + SVM, Gradient Boosting
-  (Etapa 3).
-
-## Incluir novos dados
-
-Adicione os novos arquivos (mesmo schema de colunas) à pasta `Dados/` e rode
-`python run_pipeline.py --input-dir Dados --output-dir .` de novo — a classificação por schema
-cobre isso automaticamente, sem precisar reescrever nada.
+Este repositório é **público**. Dados reais do projeto (arquivos `.nox`, planilhas das empresas
+validadoras, o banco `dados/fiep.db` e os modelos treinados) não devem ser commitados — o
+`.gitignore` já os exclui. Guarde-os no drive do projeto.
 
 ## Declaração de uso de IA
 
