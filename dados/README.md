@@ -42,34 +42,57 @@ filtro SQL: `--filtro-teste "sensor_lot = 'L09'"`.
 
 ## Como preparar um lote de .nox
 
-1. Copie os `.nox` para uma subpasta de `dados/` (ex.: `dados/empresa1/`, que conta como dado solto)
-   ou para `dados/teste/` se for uma coleta reservada para a validação externa.
-2. Gere a planilha de metadados já com a lista de arquivos:
+**Não é preciso preencher arquivo por arquivo.** A pipeline deduz sozinha, de cada `.nox`:
 
-   ```bash
-   fiep planilha --entrada dados/empresa1
-   ```
+Vale tanto o `.nox` quanto o **Excel/CSV exportado pelo NOVA** (mesmas colunas: `Potential applied (V)`,
+`WE(1).δ.Current (A)`...). Quando os dois existem no mesmo lote, usa o `.nox`. `fiep db importar` guarda
+uma cópia em Excel de cada `.nox` em `dados/excel/` (essa pasta não entra no treino).
 
-   Isso cria `dados/empresa1/metadados_nox.csv` com uma linha por arquivo. Se a planilha já existir,
-   só os arquivos novos são acrescentados.
-3. Preencha as colunas (Excel ou LibreOffice, salvando como CSV):
+| Campo | De onde vem |
+|---|---|
+| estágio do sensor | nome do arquivo (`limpo`, `sonda`/`oligo`, `rRNA`...) ou, se ele não disser, o nome do procedimento gravado no `.nox` |
+| réplica (eletrodo) | canal do potenciostato gravado no `.nox` (`MAC80058#2` → `2`) |
+| amostra | a **pasta** do arquivo: uma pasta = uma amostra |
+| data | gravada no `.nox` |
+| contaminada ou não | nome da pasta: `contaminada/`, `nao_contaminada/`, `positivo/`, `negativo/`, `controle_neg/` |
 
-   | Coluna | Obrigatória | Exemplo |
-   |---|---|---|
-   | `sample_id` | sim | `EMP1_S001` |
-   | `replicate_id` | sim | `1` (eletrodo/réplica) |
-   | `sensor_state` | sim | `carbon_clean`, `capture_probe` ou `capture_probe_16S_rRNA` |
-   | `contamination_status` | sim no treino | `1` contaminada, `0` não contaminada |
-   | `sample_log10_mean_cfu_ml` | para regressão | `5.2` |
-   | `qc_flag` | não | `PASS`, `REVIEW`, `FAIL` |
-   | `target_bacterium`, `surface_type`, `sensor_lot`, `experimental_batch`, `operator_id`, `measurement_date` | recomendadas | |
+O jeito mais simples é organizar as pastas assim e não preencher nada:
 
-4. Importe e confira:
+```
+dados/empresa1/
+  contaminada/
+    A01/   <- os .nox dos 3 estágios de todos os eletrodos da amostra A01
+    A02/
+  nao_contaminada/
+    B01/
+```
 
-   ```bash
-   fiep db importar --entrada dados
-   fiep db sql "SELECT * FROM v_replicatas WHERE n_aprovadas < 3"
-   ```
+O único dado que não sai do voltamograma é o resultado do plaqueamento (é o que o modelo aprende
+a prever). Se ele não estiver no nome das pastas, informe uma vez **por amostra**:
 
-Cada réplica precisa dos **três estágios do sensor** medidos no mesmo eletrodo para entrar no
-modelo de diferença entre estágios.
+```bash
+fiep planilha --entrada dados/empresa1
+```
+
+Isso cria duas tabelas na pasta, já preenchidas com o que foi deduzido:
+
+- `amostras.csv` — **uma linha por amostra**: complete `contamination_status` (1 = contaminada,
+  0 = não) e, se houver, `sample_log10_mean_cfu_ml`. As colunas `estagios_encontrados` e
+  `observacoes` mostram se falta algum estágio.
+- `metadados_nox.csv` — uma linha por arquivo, só para **conferir**. Corrija o que estiver errado;
+  o que estiver preenchido nela vence o que a pipeline deduziu (`preenchido_auto` diz o que foi
+  deduzido). Rodar de novo só acrescenta arquivos novos.
+
+Se os arquivos seguem um padrão de nome (ex.: `EMP1-S07-R3-sonda.nox`), dá para ensinar a pipeline
+em `[metadados].padrao_nome` de `configs/default.toml`.
+
+Depois:
+
+```bash
+fiep db importar --entrada dados
+fiep db sql "SELECT * FROM v_replicatas WHERE n_aprovadas < 3"     # réplicas incompletas
+fiep experimento --artigo
+```
+
+Cada réplica precisa dos **três estágios do sensor** medidos no mesmo eletrodo (mesmo canal) para
+entrar no modelo de diferença entre estágios. Se faltar algo, `fiep experimento` diz o quê.

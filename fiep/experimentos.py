@@ -71,6 +71,8 @@ def subconjunto(ds: Dataset, amostras) -> Dataset:
 def _tabelas(div: Divisao, cfg_v: dict):
     """Tabelas de features dos três conjuntos; a grade de potencial vem só do treino."""
     tab_tr, grade, qc_tr = montar_tabela(div.treino, cfg_v)
+    if tab_tr.empty or ROTULO not in tab_tr:
+        raise ValueError("nenhuma réplica completa no treino")
     out, qcs = {"treino": tab_tr}, [qc_tr]
     for k in ("validacao", "teste"):
         out[k] = pd.DataFrame()
@@ -80,8 +82,10 @@ def _tabelas(div: Divisao, cfg_v: dict):
                 qcs.append(q)
             except ValueError:
                 pass
-        if len(out[k]):
+        if len(out[k]) and ROTULO in out[k]:
             out[k] = out[k].dropna(subset=[ROTULO])
+        else:
+            out[k] = pd.DataFrame()
     out["treino"] = tab_tr.dropna(subset=[ROTULO])
     return out, grade, pd.concat(qcs, ignore_index=True)
 
@@ -200,7 +204,8 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
                      _fmt(linha.get("val_balanced_accuracy")), _fmt(linha.get("teste_balanced_accuracy")))
 
     if not linhas:
-        raise ValueError("Nenhuma combinação pôde ser avaliada (verifique rótulos e estágios do sensor).")
+        from .divisao import diagnosticar
+        raise ValueError("Nenhuma combinação pôde ser avaliada.\n" + diagnosticar(juntar(div.treino, div.validacao), cfg))
     placar = pd.DataFrame(linhas)
     usa_val = "val_balanced_accuracy" in placar and placar["val_balanced_accuracy"].notna().any() \
         and placar["val_roc_auc"].notna().any()
@@ -282,6 +287,13 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
             rall = contaminadas(tab_trva)
             regressor_final = clone(regs[r1.iloc[0]["modelo"]]).fit(*xr(rall, feats))
 
+    # ---------------- avaliação por AMOSTRA no teste (é a resposta que vai para quem mandou os dados)
+    por_amostra, niveis_teste = _avaliar_amostras(final, regressor_final, tab_te, feats, float(melhor["limiar"]), cfg)
+    if len(por_amostra):
+        por_amostra.to_csv(pasta / "teste_por_amostra.csv", index=False)
+    if niveis_teste is not None:
+        niveis_teste.to_csv(pasta / "niveis_teste.csv")
+
     resumo = {
         "experimento": exp_id,
         "teste": div.descricao(),
@@ -300,6 +312,9 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
         "formula_sisso": sisso_formula,
         "melhor_regressao": melhor_reg,
         "impressao_dados": _impressao(div),
+        "teste_por_amostra": _metricas_amostra(por_amostra),
+        "niveis": cfg.get("niveis"),
+        "teste_niveis": _metricas_niveis(por_amostra) if niveis_teste is not None else None,
     }
 
     if registrar:
@@ -328,6 +343,57 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
              _fmt(melhor.get("val_balanced_accuracy")), _fmt(melhor.get("teste_balanced_accuracy")))
     return {"pasta": pasta, "placar": placar, "regressao": reg, "resumo": resumo, "modelo_final": final,
             "divisao": div}
+
+
+def _avaliar_amostras(modelo, regressor, tab_te, feats, limiar, cfg):
+    """Previsões do modelo final no teste agregadas por amostra (média das réplicas) e, com
+    `[niveis]` configurado, a matriz de confusão dos níveis de contaminação."""
+    from .predict import nivel, niveis_ativos
+    if not len(tab_te):
+        return pd.DataFrame(), None
+    X = tab_te.reindex(columns=feats).astype(float)
+    d = pd.DataFrame({"sample_id": tab_te["sample_id"].astype(str).to_numpy(),
+                      "y": tab_te[ROTULO].astype(int).to_numpy(),
+                      "prob": modelo.predict_proba(X)[:, 1]})
+    d["carga_real"] = tab_te[ALVO_REG].astype(float).to_numpy() if ALVO_REG in tab_te else np.nan
+    d["carga_prevista"] = np.ravel(regressor.predict(X)) if regressor is not None else np.nan
+    d["contaminada_rep"] = d["prob"] >= limiar
+    g = d.groupby("sample_id")
+    am = pd.DataFrame({
+        "y": g["y"].max(), "prob": g["prob"].mean(), "replicas": g.size(),
+        "carga_real": g["carga_real"].mean(),
+        "carga_prevista": d[d["contaminada_rep"]].groupby("sample_id")["carga_prevista"].mean(),
+    }).reset_index()
+    am["previsto"] = (am["prob"] >= limiar).astype(int)
+    if not niveis_ativos(cfg):
+        return am, None
+    am["nivel_real"] = [nivel(c if y == 1 else None, cfg) for y, c in zip(am["y"], am["carga_real"])]
+    am["nivel_previsto"] = [nivel(c if p == 1 else None, cfg) for p, c in zip(am["previsto"], am["carga_prevista"])]
+    ordem = ["não detectada", *cfg["niveis"]["nomes"]]
+    conf = pd.crosstab(pd.Categorical(am["nivel_real"], ordem), pd.Categorical(am["nivel_previsto"], ordem),
+                       rownames=["real"], colnames=["previsto"], dropna=False)
+    return am, conf
+
+
+def _metricas_amostra(am: pd.DataFrame) -> dict | None:
+    if not len(am) or am["y"].nunique() < 2:
+        return None
+    m = _metricas(am["y"].to_numpy(), am["prob"].to_numpy(), 0.5)    # limiar já aplicado em "previsto"
+    ba = balanced_accuracy_score(am["y"], am["previsto"])
+    vp = int(((am["y"] == 1) & (am["previsto"] == 1)).sum())
+    vn = int(((am["y"] == 0) & (am["previsto"] == 0)).sum())
+    return {"n_amostras": int(len(am)), "balanced_accuracy": float(ba), "roc_auc": m["roc_auc"],
+            "sensibilidade": vp / max(1, int((am["y"] == 1).sum())),
+            "especificidade": vn / max(1, int((am["y"] == 0).sum()))}
+
+
+def _metricas_niveis(am: pd.DataFrame) -> dict | None:
+    if "nivel_real" not in am or not am["nivel_real"].notna().any() or am["carga_real"].isna().all():
+        return None
+    ok = am["nivel_real"].notna()
+    return {"acuracia": float((am.loc[ok, "nivel_real"] == am.loc[ok, "nivel_previsto"]).mean()),
+            "balanced_accuracy": float(balanced_accuracy_score(am.loc[ok, "nivel_real"], am.loc[ok, "nivel_previsto"])),
+            "n_amostras": int(ok.sum())}
 
 
 def ultimo_experimento(dados: Divisao | Dataset, saida: str | Path = "resultados", cfg: dict | None = None) -> dict | None:

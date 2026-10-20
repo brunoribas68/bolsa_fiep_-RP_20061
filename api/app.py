@@ -31,7 +31,8 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from fiep import __version__
 from fiep.ingest import ingerir
 from fiep.model import carregar
-from fiep.predict import prever
+from fiep.config import load_config
+from fiep.predict import prever, resumo_por_amostra
 
 ESTATICO = Path(__file__).parent / "static"
 EXTENSOES = {".nox", ".csv", ".xlsx", ".xls", ".txt"}
@@ -77,6 +78,7 @@ def _limpo(v):
 
 
 async def _salvar_uploads(arquivos: list[UploadFile], destino: Path) -> list[str]:
+    destino.mkdir(parents=True, exist_ok=True)
     if not arquivos:
         raise HTTPException(400, "Envie pelo menos um arquivo.")
     if len(arquivos) > MAX_ARQUIVOS:
@@ -120,12 +122,16 @@ async def api_prever(arquivos: list[UploadFile] = File(..., description=".nox + 
     p = pacote()
     tmp = Path(tempfile.mkdtemp(prefix="fiep_"))
     try:
-        await _salvar_uploads(arquivos, tmp)
+        # sem planilha, os arquivos de um envio formam uma amostra (separada por dia de medição)
+        await _salvar_uploads(arquivos, tmp / "envio")
         try:
-            ds = ingerir(tmp)
+            ds = ingerir(tmp, cfg=p["cfg"])
         except FileNotFoundError as e:
             raise HTTPException(400, str(e)) from e
-        res = prever(ds, p)
+        cfg_arq = os.environ.get("FIEP_CONFIG", "configs/default.toml")
+        niveis = load_config(cfg_arq if Path(cfg_arq).exists() else None).get("niveis")
+        res = prever(ds, p, niveis=niveis)
+        am = resumo_por_amostra(res)
         avisos = ds.relatorio.loc[ds.relatorio["tipo"] == "aviso", "detalhe"].astype(str).tolist()
         if os.environ.get("FIEP_DB") and len(res):
             from fiep import db
@@ -135,8 +141,32 @@ async def api_prever(arquivos: list[UploadFile] = File(..., description=".nox + 
             con.close()
         linhas = [{k: _limpo(v) for k, v in r.items()} for r in res.to_dict(orient="records")]
         resumo = res["resultado"].value_counts().to_dict() if len(res) else {}
+        amostras = [{k: _limpo(v) for k, v in r.items()} for r in am.to_dict(orient="records")]
         return {"modelo": p["cartao"]["id"], "algoritmo": p["cartao"]["modelo"], "resumo": resumo,
-                "resultados": linhas, "avisos": avisos}
+                "amostras": amostras, "resultados": linhas, "avisos": avisos}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.post("/api/excel")
+async def api_excel(arquivos: list[UploadFile] = File(..., description="arquivos .nox")):
+    """Converte os .nox enviados para Excel (formato do NOVA) e devolve um .zip."""
+    import io
+    import zipfile
+
+    from fiep.excel import converter_pasta
+    tmp = Path(tempfile.mkdtemp(prefix="fiep_"))
+    try:
+        nomes = await _salvar_uploads(arquivos, tmp / "envio")
+        if not any(n.lower().endswith(".nox") for n in nomes):
+            raise HTTPException(400, "Envie arquivos .nox para converter.")
+        gerados = converter_pasta(tmp / "envio", tmp / "excel")
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for g in gerados:
+                z.write(g, g.relative_to(tmp / "excel").as_posix())
+        return Response(buf.getvalue(), media_type="application/zip",
+                        headers={"Content-Disposition": 'attachment; filename="voltamogramas_excel.zip"'})
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -146,10 +176,10 @@ async def api_planilha(arquivos: list[UploadFile] = File(..., description="arqui
     from fiep.planilha import gerar_planilha
     tmp = Path(tempfile.mkdtemp(prefix="fiep_"))
     try:
-        nomes = await _salvar_uploads(arquivos, tmp)
+        nomes = await _salvar_uploads(arquivos, tmp / "envio")
         if not any(n.lower().endswith(".nox") for n in nomes):
             raise HTTPException(400, "Envie arquivos .nox para gerar a planilha.")
-        destino, _ = gerar_planilha(tmp)
+        destino, _ = gerar_planilha(tmp / "envio")
         return Response(destino.read_bytes(), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": 'attachment; filename="metadados_nox.csv"'})
     finally:

@@ -70,6 +70,8 @@ def test_nox_reais_planilha_e_previsao(cliente):
     files = [("arquivos", (n.name, n.read_bytes(), "application/octet-stream")) for n in noxs]
     r = cliente.post("/api/planilha", files=files)
     assert r.status_code == 200 and "arquivo" in r.text.splitlines()[0]
-    r = cliente.post("/api/prever", files=files)          # sem planilha: lê, mas sem amostra
+    r = cliente.post("/api/prever", files=files)          # sem planilha: amostra e estágio deduzidos
     assert r.status_code == 200
-    assert any("planilha" in a for a in r.json()["avisos"])
+    res = r.json()["resultados"]
+    assert {x["sample_id"] for x in res} == {"envio"}
+    assert any("faltam os estágios" in (x["motivo"] or "") for x in res)

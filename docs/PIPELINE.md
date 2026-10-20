@@ -21,7 +21,7 @@ configuração, a lista de características e o limiar ficam gravados no modelo.
 
 | Comando | O que faz |
 |---|---|
-| `fiep planilha --entrada dados/empresa1` | cria/completa a planilha de metadados do lote de `.nox` |
+| `fiep planilha --entrada dados/empresa1` | cria `amostras.csv` (uma linha por amostra) e `metadados_nox.csv` (conferência), já com amostra, réplica, estágio e data deduzidos |
 | `fiep db importar --entrada dados` | lê `.nox`/tabelas, grava no banco (com o conjunto de cada pasta) e roda o QC |
 | `fiep db resumo` / `fiep db sql "..."` / `fiep db exportar` | consulta e exporta o banco |
 | `fiep experimento [--dados dados] [--artigo]` | divide os dados, compara variantes × modelos, registra o melhor, gera figuras/tabelas |
@@ -39,12 +39,18 @@ Ver [`dados/README.md`](../dados/README.md). Tabelas são reconhecidas **pelas c
 
 | Papel | Colunas obrigatórias |
 |---|---|
-| Índice dos `.nox` (planilha) | `arquivo`, `sample_id` |
+| Índice dos `.nox` (planilha, opcional: corrige o que foi deduzido) | `arquivo`, `sample_id` |
 | Sinal (formato do case) | `measurement_id`, `potential_V`, `current_uA` |
 | Metadados (formato do case) | `measurement_id`, `sample_id`, `contamination_status` |
 | Plaqueamento | `sample_id`, `colony_count` |
+| Amostras (rótulo e carga, uma linha por amostra) | `sample_id`, `contamination_status` |
 
-Do `.nox`: DPV/SWV → potencial aplicado × `WE(1).δ.Current`; CV/LSV → potencial aplicado ×
+Metadados dos `.nox` sem planilha são deduzidos por `fiep/metadados_auto.py` (estágio pelo nome do
+arquivo/procedimento, réplica pelo canal do potenciostato, amostra pela pasta, rótulo pelo nome da
+pasta).
+
+`.nox` ou Excel/CSV exportado pelo NOVA (`fiep/io/nox.py: exportacao_to_curves`; aba `Info` do
+`fiep excel` traz canal e procedimento). Do `.nox`: DPV/SWV → potencial aplicado × `WE(1).δ.Current`; CV/LSV → potencial aplicado ×
 `WE(1).Current` (último scan). Correntes em µA. O potencial medido e a corrente de base vão para o QC.
 Só a técnica de `[dados].tecnica` (padrão DPV) entra no treino.
 
@@ -75,7 +81,10 @@ Só a técnica de `[dados].tecnica` (padrão DPV) entra no treino.
    medida no teste; o número que vale é o da combinação escolhida — o teste não escolhe nada.
 6. **Regressão** da carga (log10 UFC/mL) nas contaminadas: Ridge, PLS, SVR, RF, extra trees, GB;
    mesmo protocolo (escolha pelo RMSE na validação).
-7. Saídas em `resultados/<id>/`: `classificacao.csv`, `regressao.csv`, `resumo.json`,
+7. **Por amostra**: no teste, a probabilidade da amostra é a média das réplicas
+   (`teste_por_amostra.csv`); com `[niveis]` configurado, a carga estimada vira nível de
+   contaminação e a matriz de confusão dos níveis vai para `niveis_teste.csv`.
+8. Saídas em `resultados/<id>/`: `classificacao.csv`, `regressao.csv`, `resumo.json`,
    `figuras/*.png`, `tabelas/*.tex`; o melhor modelo (+ regressor) vai para `modelos/<id>/` e
    passa a ser o usado pela API. Com `--artigo`, figuras e tabelas são copiadas para `artigo/gerado/`.
 
