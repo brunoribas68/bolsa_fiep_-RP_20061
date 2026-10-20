@@ -91,10 +91,12 @@ python src/ingest_pipeline.py --prepared-dir prepared --output-dir outputs
 python src/advanced_modeling.py --prepared-dir prepared --output-dir outputs_advanced
 ```
 
-### Opção B — Notebook (self-contained, cobre as 3 fases do case com narrativa/gráficos)
+### Opção B — Notebook (cobre as 3 fases do case + a pipeline de produção, com narrativa/gráficos)
 
-Abra `case_biossensor.ipynb` (local, Jupyter ou Google Colab) e rode `Restart & Run All`.
-O notebook não importa nada de `src/` — toda a lógica está inline nele mesmo.
+Abra `case_biossensor.ipynb` (local, Jupyter ou Google Colab) **a partir da raiz do repositório** e rode
+`Restart & Run All`. As fases 1–3 usam os scripts de `src/`; a Fase 4 usa o pacote `fiep/`
+(ingestão de `.nox`, QC automático, treino com registro de modelos e predição). Para testar a Fase 4 com
+arquivos `.nox` reais, coloque-os com a planilha de metadados numa pasta `nova_coleta/` (fora do Git).
 
 ## Saídas geradas
 
