@@ -25,6 +25,17 @@ pytest -q                         # testes (usam dados sintéticos)
 
 ## Comandos
 
+Com banco de dados (recomendado; ver [`BANCO.md`](BANCO.md)):
+
+```bash
+fiep db importar --entrada Dados                     # grava em dados/fiep.db e roda o QC
+fiep treinar --db dados/fiep.db                      # treina e registra o modelo no banco
+fiep prever  --entrada nova_coleta/ --db dados/fiep.db
+fiep db exportar --saida dados/fiep_banco.xlsx
+```
+
+Só com arquivos CSV:
+
 ```bash
 fiep tudo    --entrada Dados                         # ingerir + treinar
 fiep ingerir --entrada Dados --saida dados/processados
@@ -95,7 +106,7 @@ Treino com `Dados/` (200 amostras, 502 réplicas completas após o QC), CV agrup
 
 ## Próximos passos (plano de tarefas)
 
-- T09/T10: planilha de ligação voltamograma ↔ plaqueamento e esquema do banco (hoje: CSV em `dados/processados/`).
+- T09: planilha de ligação voltamograma ↔ plaqueamento das coletas reais (o banco já liga `medicoes` ↔ `plaqueamentos` por `sample_id`).
 - T13: comparar `linha_de_base = "linear_extremos"` com a correção do NOVA.
 - T31: regressão da carga (log UFC/mL) usando `sample_log10_mean_cfu_ml`.
 - T32: SISSO como candidato adicional em `fiep/model.py`.

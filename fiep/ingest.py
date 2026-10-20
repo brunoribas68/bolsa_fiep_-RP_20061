@@ -20,6 +20,7 @@ Saída (formato canônico):
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -69,6 +70,10 @@ class Dataset:
     pontos: pd.DataFrame
     amostras: pd.DataFrame
     relatorio: pd.DataFrame
+    # plaqueamento bruto (1 linha por placa) e arquivos de origem (nome, papel, sha256),
+    # usados pelo banco de dados para rastreabilidade
+    plaqueamento: pd.DataFrame = field(default_factory=pd.DataFrame)
+    arquivos: pd.DataFrame = field(default_factory=pd.DataFrame)
 
     def salvar(self, pasta: str | Path) -> None:
         pasta = Path(pasta)
@@ -77,6 +82,10 @@ class Dataset:
         self.pontos.to_csv(pasta / "pontos.csv.gz", index=False)
         self.amostras.to_csv(pasta / "amostras.csv", index=False)
         self.relatorio.to_csv(pasta / "relatorio_ingestao.csv", index=False)
+        if len(self.plaqueamento):
+            self.plaqueamento.to_csv(pasta / "plaqueamento.csv", index=False)
+        if len(self.arquivos):
+            self.arquivos.to_csv(pasta / "arquivos.csv", index=False)
 
     @classmethod
     def carregar(cls, pasta: str | Path) -> "Dataset":
@@ -86,7 +95,17 @@ class Dataset:
             pontos=pd.read_csv(pasta / "pontos.csv.gz"),
             amostras=pd.read_csv(pasta / "amostras.csv"),
             relatorio=pd.read_csv(pasta / "relatorio_ingestao.csv"),
+            plaqueamento=pd.read_csv(pasta / "plaqueamento.csv") if (pasta / "plaqueamento.csv").exists() else pd.DataFrame(),
+            arquivos=pd.read_csv(pasta / "arquivos.csv") if (pasta / "arquivos.csv").exists() else pd.DataFrame(),
         )
+
+
+def sha256_arquivo(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for bloco in iter(lambda: f.read(1 << 20), b""):
+            h.update(bloco)
+    return h.hexdigest()
 
 
 def _slug(s: str) -> str:
@@ -220,6 +239,7 @@ def ingerir(pasta_entrada: str | Path) -> Dataset:
     rel = Relatorio()
     buckets: dict[str, list[pd.DataFrame]] = {p: [] for p in PAPEIS}
     noxs = sorted(pasta.rglob("*.nox"))
+    origem = []
     for arq in sorted(p for p in pasta.rglob("*") if p.suffix.lower() in EXT_TABELA):
         try:
             df = _ler_tabela(arq)
@@ -233,6 +253,8 @@ def ingerir(pasta_entrada: str | Path) -> Dataset:
         df["__arquivo"] = arq.name
         buckets[papel].append(df)
         rel.arquivos[arq.name] = papel
+        origem.append({"arquivo": arq.name, "papel": papel, "sha256": sha256_arquivo(arq),
+                       "tamanho_bytes": arq.stat().st_size, "n_linhas": len(df)})
 
     sinal = _concat(buckets["sinal"])
     meta = _concat(buckets["metadados"])
@@ -262,5 +284,14 @@ def ingerir(pasta_entrada: str | Path) -> Dataset:
     pontos = _concat(pts)
     pontos = pontos[pontos["measurement_id"].isin(med["measurement_id"])]
     amostras = _amostras(med, plaq, rel)
+    usados_nox = set(med.loc[med["fonte"] == "nox", "arquivo_origem"])
+    for a in noxs:
+        if a.name in usados_nox:
+            origem.append({"arquivo": a.name, "papel": "nox", "sha256": sha256_arquivo(a),
+                           "tamanho_bytes": a.stat().st_size, "n_linhas": int((pontos["measurement_id"] ==
+                           med.loc[med["arquivo_origem"] == a.name, "measurement_id"].iloc[0]).sum())})
     log.info("Ingestão: %d medições, %d pontos, %d amostras", len(med), len(pontos), len(amostras))
-    return Dataset(med.reset_index(drop=True), pontos.reset_index(drop=True), amostras, rel.to_frame())
+    return Dataset(med.reset_index(drop=True), pontos.reset_index(drop=True), amostras, rel.to_frame(),
+                   plaqueamento=plaq.drop(columns="__arquivo", errors="ignore").assign(
+                       arquivo_origem=plaq["__arquivo"]) if len(plaq) else pd.DataFrame(),
+                   arquivos=pd.DataFrame(origem))
