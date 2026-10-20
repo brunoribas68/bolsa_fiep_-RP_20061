@@ -40,7 +40,12 @@ PAPEIS = {
     "sinal": {"measurement_id", "potential_v", "current_ua"},
     "metadados": {"measurement_id", "sample_id", "contamination_status"},
     "plaqueamento": {"sample_id", "colony_count"},
+    # uma linha por amostra (rótulo e carga), ex.: amostras.csv gerado por `fiep planilha`
+    "rotulos_amostra": {"sample_id", "contamination_status"},
 }
+# campos que a tabela de amostras completa nas medições (só onde estiverem vazios)
+CAMPOS_AMOSTRA = ["contamination_status", "sample_log10_mean_cfu_ml", "target_bacterium", "surface_type",
+                  "sensor_lot", "experimental_batch"]
 
 COLS_MEDICAO = [
     "measurement_id", "sample_id", "replicate_id", "sensor_state", "tecnica", "fonte",
@@ -188,26 +193,13 @@ def _medicoes_do_case(sinal: pd.DataFrame, meta: pd.DataFrame, rel: Relatorio):
     return med, pontos
 
 
-def _medicoes_do_nox(arquivos: list[Path], indice: pd.DataFrame, rel: Relatorio, base: Path | None = None):
-    if indice.empty:
-        rel.aviso(f"{len(arquivos)} arquivo(s) .nox sem planilha de metadados (coluna 'arquivo'): "
-                  "serão lidos, mas ficam sem rótulo nem amostra.")
-        indice = pd.DataFrame({"arquivo": [a.name for a in arquivos]})
-    indice = indice.copy().replace(r"^\s*$", np.nan, regex=True)
-    indice = indice.dropna(subset=["arquivo"])
-    indice["arquivo"] = indice["arquivo"].astype(str).str.strip().str.replace("\\", "/", regex=False)
-    por_nome = {a.name: a for a in arquivos}
-    por_nome.update({a.stem: a for a in arquivos})
-    if base is not None:                     # caminho relativo (subpastas por empresa/data)
-        por_nome.update({a.relative_to(base).as_posix(): a for a in arquivos})
-
-    meds, pts = [], []
-    for _, linha in indice.iterrows():
-        caminho = (por_nome.get(linha["arquivo"]) or por_nome.get(Path(linha["arquivo"]).name)
-                   or por_nome.get(Path(linha["arquivo"]).stem))
-        if caminho is None:
-            rel.aviso(f"Arquivo listado nos metadados não encontrado: {linha['arquivo']}")
-            continue
+def _medicoes_do_nox(arquivos: list[Path], indice: pd.DataFrame, rel: Relatorio, base: Path | None = None,
+                     cfg: dict | None = None):
+    """Lê os .nox. Os metadados são deduzidos automaticamente (fiep/metadados_auto.py) e a planilha,
+    se houver, só corrige: um valor preenchido nela vence o deduzido."""
+    from .metadados_auto import id_medicao, inferir
+    lidos, infos = {}, {}
+    for caminho in arquivos:
         try:
             info, curvas = nox_to_curves(caminho)
         except Exception as e:  # noqa: BLE001 - registrar e seguir com o lote
@@ -218,14 +210,41 @@ def _medicoes_do_nox(arquivos: list[Path], indice: pd.DataFrame, rel: Relatorio,
             continue
         if len(curvas) > 1:
             rel.aviso(f"{caminho.name}: {len(curvas)} medições no mesmo arquivo; usando a primeira.")
-        c = curvas[0]
-        mid = linha.get("measurement_id")
-        mid = mid if isinstance(mid, str) and mid else caminho.stem
-        reg = {k: linha[k] for k in linha.index if k != "arquivo" and pd.notna(linha[k])}
-        reg.update({"measurement_id": mid, "tecnica": c["tecnica"], "fonte": "nox",
-                    "arquivo_origem": caminho.name})
         if info.get("leitura", "").startswith("PARCIAL"):
             rel.aviso(f"{caminho.name}: leitura parcial do arquivo.")
+        lidos[caminho], infos[caminho] = curvas[0], info
+    auto = inferir(list(lidos), infos, cfg)
+    auto = {r["_caminho"]: r for _, r in auto.iterrows()} if len(auto) else {}
+
+    # planilha: localizar a linha de cada arquivo (caminho relativo, nome ou nome sem extensão)
+    planilha = {}
+    if not indice.empty:
+        indice = indice.copy().replace(r"^\s*$", np.nan, regex=True).dropna(subset=["arquivo"])
+        indice["arquivo"] = indice["arquivo"].astype(str).str.strip().str.replace("\\", "/", regex=False)
+        por_nome = {a.name: a for a in lidos}
+        por_nome.update({a.stem: a for a in lidos})
+        if base is not None:
+            por_nome.update({a.relative_to(base).as_posix(): a for a in lidos})
+        for _, linha in indice.iterrows():
+            a = linha["arquivo"]
+            caminho = por_nome.get(a) or por_nome.get(Path(a).name) or por_nome.get(Path(a).stem)
+            if caminho is None:
+                if not any(Path(a).name == x.name for x in arquivos):
+                    rel.aviso(f"Arquivo listado nos metadados não encontrado: {a}")
+                continue
+            planilha[caminho] = {k: linha[k] for k in linha.index if k != "arquivo" and pd.notna(linha[k])}
+
+    meds, pts, n_auto = [], [], 0
+    for caminho, c in lidos.items():
+        ded = auto.get(caminho, {})
+        reg = {k: ded[k] for k in ("sample_id", "replicate_id", "sensor_state", "contamination_status",
+                                   "target_bacterium", "measurement_date") if k in ded and pd.notna(ded[k])}
+        man = planilha.get(caminho, {})
+        n_auto += any(k not in man for k in ("sample_id", "sensor_state"))
+        reg.update(man)
+        mid = reg.get("measurement_id")
+        mid = mid if isinstance(mid, str) and mid else id_medicao(reg.get("sample_id"), caminho.stem)
+        reg.update({"measurement_id": mid, "tecnica": c["tecnica"], "fonte": "nox", "arquivo_origem": caminho.name})
         meds.append(reg)
         n = len(c["potential_v"])
         pts.append(pd.DataFrame({
@@ -237,11 +256,28 @@ def _medicoes_do_nox(arquivos: list[Path], indice: pd.DataFrame, rel: Relatorio,
             "i_bruta_ua": c["i_bruta_ua"] if c["i_bruta_ua"] is not None else [np.nan] * n,
         }))
         rel.arquivos[caminho.name] = f"nox:{c['tecnica']} ({n} pontos)"
-    usados = {m["arquivo_origem"] for m in meds}
-    for a in arquivos:
-        if a.name not in usados and a.name not in rel.arquivos:
-            rel.aviso(f"{a.name}: .nox sem linha correspondente na planilha de metadados (ignorado).")
+    if n_auto:
+        log.info("%d .nox com amostra/estágio deduzidos automaticamente (confira com `fiep planilha`).", n_auto)
     return pd.DataFrame(meds), _concat(pts)
+
+
+def _completar_por_amostra(med: pd.DataFrame, rot: pd.DataFrame, rel: Relatorio) -> pd.DataFrame:
+    """Completa rótulo/carga das medições com a tabela de amostras (uma linha por amostra)."""
+    if rot.empty or "sample_id" not in med:
+        return med
+    rot = rot.replace(r"^\s*$", np.nan, regex=True).dropna(subset=["sample_id"])
+    rot["sample_id"] = rot["sample_id"].astype(str).str.strip()
+    rot = rot.drop_duplicates("sample_id", keep="last").set_index("sample_id")
+    chave = med["sample_id"].astype(str)
+    for col in CAMPOS_AMOSTRA:
+        if col not in rot:
+            continue
+        valores = chave.map(rot[col])
+        med[col] = med[col].where(med[col].notna(), valores) if col in med else valores
+    sem = set(chave[med["sample_id"].notna()]) - set(rot.index)
+    if sem:
+        rel.aviso(f"{len(sem)} amostra(s) sem linha na tabela de amostras: {sorted(sem)[:5]}")
+    return med
 
 
 def _amostras(med: pd.DataFrame, plaq: pd.DataFrame, rel: Relatorio) -> pd.DataFrame:
@@ -283,7 +319,7 @@ def tem_dados(pasta: str | Path, excluir: tuple[str, ...] = ()) -> bool:
     return bool(noxs or tabelas)
 
 
-def ingerir(pasta_entrada: str | Path, excluir: tuple[str, ...] = ()) -> Dataset:
+def ingerir(pasta_entrada: str | Path, excluir: tuple[str, ...] = (), cfg: dict | None = None) -> Dataset:
     """Lê tudo o que houver na pasta (exceto as subpastas em `excluir`) e devolve o Dataset canônico."""
     pasta = Path(pasta_entrada)
     rel = Relatorio()
@@ -316,13 +352,15 @@ def ingerir(pasta_entrada: str | Path, excluir: tuple[str, ...] = ()) -> Dataset
         m, p = _medicoes_do_case(sinal, meta.drop(columns="__arquivo", errors="ignore"), rel)
         meds.append(m), pts.append(p)
     if noxs:
-        m, p = _medicoes_do_nox(noxs, indice.drop(columns="__arquivo", errors="ignore"), rel, base=pasta)
+        m, p = _medicoes_do_nox(noxs, indice.drop(columns="__arquivo", errors="ignore"), rel, base=pasta, cfg=cfg)
         if len(m):
             meds.append(m), pts.append(p)
     if not meds:
         raise FileNotFoundError(f"Nenhum dado de sinal (.nox ou tabela de voltamogramas) em {pasta}")
 
     med = _concat(meds)
+    rot = _concat(buckets["rotulos_amostra"]).drop(columns="__arquivo", errors="ignore")
+    med = _completar_por_amostra(med, rot, rel)
     for c in COLS_MEDICAO:
         if c not in med:
             med[c] = np.nan

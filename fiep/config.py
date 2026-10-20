@@ -41,6 +41,8 @@ DEFAULTS: dict = {
         "estagio_unico": "capture_probe_16S_rRNA",
         "curva_delta_completa": True,
     },
+    # dedução automática dos metadados dos .nox (fiep/metadados_auto.py)
+    "metadados": {"padrao_nome": ""},
     # proporções da divisão por amostra dos dados soltos em dados/ (ver fiep/divisao.py)
     "divisao": {"treino": 0.50, "validacao": 0.25, "teste": 0.25},
     "modelo": {

@@ -155,12 +155,24 @@ def _servir(a):
 
 
 def _planilha(a):
+    import pandas as pd
     from .planilha import gerar_planilha
-    destino, n = gerar_planilha(a.entrada, cfg=load_config(a.config))
-    print(f"{n} arquivo(s) novo(s) adicionados em {destino}")
-    print("Preencha sample_id, replicate_id, sensor_state e contamination_status e depois rode:")
-    print("  fiep db importar --entrada dados")
-    print("  fiep experimento --artigo")
+    cfg = load_config(a.config)
+    destino, n = gerar_planilha(a.entrada, cfg=cfg)
+    print(f"{n} arquivo(s) novo(s) em {destino} (amostra, réplica, estágio e data já deduzidos — só confira)")
+    am_path = Path(a.entrada) / "amostras.csv"
+    if not am_path.exists():
+        print("Nenhuma amostra deduzida (há .nox na pasta?).")
+        return
+    am = pd.read_csv(am_path, dtype=str, encoding="utf-8-sig").fillna("")
+    faltam = am[am["contamination_status"].str.strip() == ""]
+    print(f"\n{am_path}: {len(am)} amostra(s), uma linha por amostra")
+    print(am.drop(columns=["surface_type"], errors="ignore").to_string(index=False, max_rows=30))
+    if len(faltam):
+        print(f"\nPreencha contamination_status (1 = contaminada, 0 = não; do plaqueamento) e, se houver, "
+              f"sample_log10_mean_cfu_ml nas {len(faltam)} linha(s) de {am_path}.")
+        print("Dica: pastas chamadas contaminada/ e nao_contaminada/ (ou positivo/negativo) já preenchem o rótulo.")
+    print("Depois:\n  fiep db importar --entrada dados\n  fiep experimento --artigo")
 
 
 def _db(a):

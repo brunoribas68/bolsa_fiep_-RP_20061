@@ -29,11 +29,10 @@ Requer Python 3.11 ou mais recente.
 ## Fluxo de trabalho
 
 ```bash
-# 1. coloque os .nox de um lote em dados/ (ex.: dados/empresa1/) e gere a planilha de metadados
+# 1. coloque os .nox em dados/, uma pasta por amostra (ex.: dados/empresa1/contaminada/A01/).
+#    Amostra, réplica (canal), estágio e data são deduzidos dos arquivos; o rótulo vem do nome
+#    da pasta ou de amostras.csv (uma linha por amostra), criado já preenchido por:
 fiep planilha --entrada dados/empresa1
-#    abra dados/empresa1/metadados_nox.csv e preencha sample_id, replicate_id, sensor_state e
-#    contamination_status (e a carga, se houver). Sem isso não há o que treinar: cada réplica
-#    precisa dos 3 estágios do sensor (carbon_clean, capture_probe, capture_probe_16S_rRNA)
 
 # 2. importe para o banco (dados/fiep.db) — roda o controle de qualidade
 fiep db importar --entrada dados

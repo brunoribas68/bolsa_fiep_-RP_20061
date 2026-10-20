@@ -21,7 +21,7 @@ configuração, a lista de características e o limiar ficam gravados no modelo.
 
 | Comando | O que faz |
 |---|---|
-| `fiep planilha --entrada dados/empresa1` | cria/completa a planilha de metadados do lote de `.nox` |
+| `fiep planilha --entrada dados/empresa1` | cria `amostras.csv` (uma linha por amostra) e `metadados_nox.csv` (conferência), já com amostra, réplica, estágio e data deduzidos |
 | `fiep db importar --entrada dados` | lê `.nox`/tabelas, grava no banco (com o conjunto de cada pasta) e roda o QC |
 | `fiep db resumo` / `fiep db sql "..."` / `fiep db exportar` | consulta e exporta o banco |
 | `fiep experimento [--dados dados] [--artigo]` | divide os dados, compara variantes × modelos, registra o melhor, gera figuras/tabelas |
@@ -39,10 +39,15 @@ Ver [`dados/README.md`](../dados/README.md). Tabelas são reconhecidas **pelas c
 
 | Papel | Colunas obrigatórias |
 |---|---|
-| Índice dos `.nox` (planilha) | `arquivo`, `sample_id` |
+| Índice dos `.nox` (planilha, opcional: corrige o que foi deduzido) | `arquivo`, `sample_id` |
 | Sinal (formato do case) | `measurement_id`, `potential_V`, `current_uA` |
 | Metadados (formato do case) | `measurement_id`, `sample_id`, `contamination_status` |
 | Plaqueamento | `sample_id`, `colony_count` |
+| Amostras (rótulo e carga, uma linha por amostra) | `sample_id`, `contamination_status` |
+
+Metadados dos `.nox` sem planilha são deduzidos por `fiep/metadados_auto.py` (estágio pelo nome do
+arquivo/procedimento, réplica pelo canal do potenciostato, amostra pela pasta, rótulo pelo nome da
+pasta).
 
 Do `.nox`: DPV/SWV → potencial aplicado × `WE(1).δ.Current`; CV/LSV → potencial aplicado ×
 `WE(1).Current` (último scan). Correntes em µA. O potencial medido e a corrente de base vão para o QC.

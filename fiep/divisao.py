@@ -128,15 +128,21 @@ def diagnosticar(ds: Dataset | None, cfg: dict | None = None) -> str:
     if sem_id.any():
         arqs = m.loc[sem_id, "arquivo_origem"].dropna().unique()
         linhas.append(f"  {sem_id.sum()} medições sem sample_id (ex.: {', '.join(map(str, arqs[:3]))}). "
-                      "Preencha a planilha metadados_nox.csv da pasta (fiep planilha --entrada <pasta>) "
-                      "e importe de novo.")
+                      "Coloque os .nox de cada amostra numa pasta própria ou corrija em metadados_nox.csv.")
     sem_rot = m["sample_id"].notna() & m["contamination_status"].isna()
     if sem_rot.any():
-        linhas.append(f"  {m.loc[sem_rot, 'sample_id'].nunique()} amostras sem contamination_status (0 ou 1).")
+        ams = sorted(m.loc[sem_rot, "sample_id"].astype(str).unique())
+        linhas.append(f"  {len(ams)} amostra(s) sem contamination_status (0 ou 1): {', '.join(ams[:5])}. "
+                      "Informe o resultado do plaqueamento em amostras.csv (uma linha por amostra; "
+                      "`fiep planilha --entrada <pasta do lote>` cria a tabela) ou use pastas "
+                      "contaminada/ e nao_contaminada/.")
     rot = m.dropna(subset=["sample_id", "contamination_status"])
     if len(rot):
         classes = rot.groupby("sample_id")["contamination_status"].max().astype(int).value_counts().to_dict()
         linhas.append(f"  Amostras com rótulo: {classes} (1 = contaminada). São necessárias as duas classes.")
+        if sum(classes.values()) < 20:
+            linhas.append("  São poucas amostras para dividir em treino, validação e teste: junte mais lotes "
+                          "(recomendado: dezenas de amostras de cada classe).")
         est = rot.groupby(["sample_id", "replicate_id"])["sensor_state"].apply(lambda s: set(s.dropna()))
         completas = int(sum(set(estagios) <= e for e in est))
         linhas.append(f"  Réplicas com os {len(estagios)} estágios ({', '.join(estagios)}): {completas} de {len(est)}.")

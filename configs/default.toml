@@ -31,6 +31,12 @@ modo = "diferenca_estagios"       # "diferenca_estagios" | "estagio_unico"
 estagio_unico = "capture_probe_16S_rRNA"
 curva_delta_completa = true
 
+[metadados]
+# Amostra, réplica (canal), estágio e data dos .nox são deduzidos automaticamente (fiep/metadados_auto.py).
+# Se os arquivos seguem um padrão de nome, descreva-o com grupos nomeados, ex.:
+#   padrao_nome = '(?P<sample_id>EMP\d+-S\d+)-R(?P<replicate_id>\d+)'
+padrao_nome = ""
+
 [divisao]
 # Dados soltos em dados/ são divididos por amostra (estratificado pela classe) nestas proporções.
 # Dados em dados/treino, dados/validacao e dados/teste são somados ao conjunto da pasta.

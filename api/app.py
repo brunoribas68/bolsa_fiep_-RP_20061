@@ -77,6 +77,7 @@ def _limpo(v):
 
 
 async def _salvar_uploads(arquivos: list[UploadFile], destino: Path) -> list[str]:
+    destino.mkdir(parents=True, exist_ok=True)
     if not arquivos:
         raise HTTPException(400, "Envie pelo menos um arquivo.")
     if len(arquivos) > MAX_ARQUIVOS:
@@ -120,7 +121,8 @@ async def api_prever(arquivos: list[UploadFile] = File(..., description=".nox + 
     p = pacote()
     tmp = Path(tempfile.mkdtemp(prefix="fiep_"))
     try:
-        await _salvar_uploads(arquivos, tmp)
+        # sem planilha, os arquivos de um envio formam uma amostra (separada por dia de medição)
+        await _salvar_uploads(arquivos, tmp / "envio")
         try:
             ds = ingerir(tmp)
         except FileNotFoundError as e:
@@ -146,10 +148,10 @@ async def api_planilha(arquivos: list[UploadFile] = File(..., description="arqui
     from fiep.planilha import gerar_planilha
     tmp = Path(tempfile.mkdtemp(prefix="fiep_"))
     try:
-        nomes = await _salvar_uploads(arquivos, tmp)
+        nomes = await _salvar_uploads(arquivos, tmp / "envio")
         if not any(n.lower().endswith(".nox") for n in nomes):
             raise HTTPException(400, "Envie arquivos .nox para gerar a planilha.")
-        destino, _ = gerar_planilha(tmp)
+        destino, _ = gerar_planilha(tmp / "envio")
         return Response(destino.read_bytes(), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": 'attachment; filename="metadados_nox.csv"'})
     finally:
