@@ -1,0 +1,9 @@
+dados/
+modelos/
+resultados/
+artigo/
+notebook/
+*.nox
+*.db
+.git
+__pycache__

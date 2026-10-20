@@ -1,0 +1,29 @@
+\section{Introdução}
+
+A verificação da higiene de superfícies em linhas de produção é exigida em programas de segurança
+de alimentos e de controle de contaminação. Os métodos de referência, baseados na coleta de
+amostras de superfície \citep{iso18593} e no cultivo em placa, são confiáveis, mas o resultado
+demora de um a vários dias, o que impede uma decisão no mesmo turno de produção.
+
+Biossensores eletroquímicos de DNA (genossensores) detectam sequências específicas de
+microrganismos, como trechos do gene do rRNA 16S, por meio de uma sonda de captura imobilizada no
+eletrodo: a hibridização com o alvo altera a transferência de carga de uma sonda redox em solução
+(por exemplo, o par ferri/ferrocianeto), o que aparece como mudança na corrente de pico do
+voltamograma. Eletrodos impressos de carbono (SPCE) tornam a medição barata e portátil, mas o
+sinal varia entre eletrodos, lotes e operadores, e a decisão por um limiar fixo de corrente tende a
+falhar fora do laboratório.
+
+Técnicas de aprendizado de máquina e quimiometria têm sido usadas para extrair mais informação de
+sinais eletroquímicos, de PCA e PLS a florestas aleatórias, máquinas de vetores de suporte e redes
+neurais \citep{puthongkham2021, bocan2025}. Duas dificuldades se repetem nesses trabalhos: os
+conjuntos de dados são pequenos e heterogêneos, e a validação nem sempre impede que medições da
+mesma amostra apareçam no treino e no teste, o que infla os resultados \citep{kapoor2023}. Métodos
+que produzem descritores explícitos, como o SISSO \citep{ouyang2018}, são atraentes nesse cenário
+porque funcionam com poucas amostras e dão uma fórmula interpretável.
+
+Este trabalho descreve uma plataforma integrada, desenvolvida no projeto FIEP, com os seguintes
+objetivos: (i) ler os voltamogramas diretamente dos arquivos do potenciostato e organizá-los em um
+banco de dados rastreável, com controle de qualidade automático; (ii) comparar de forma sistemática
+representações do sinal e modelos supervisionados, incluindo o SISSO, para classificar superfícies
+e estimar a carga bacteriana; e (iii) disponibilizar o modelo escolhido em uma ferramenta de uso no
+laboratório e nas empresas validadoras.

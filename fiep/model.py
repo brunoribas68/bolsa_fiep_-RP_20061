@@ -20,16 +20,9 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.calibration import CalibratedClassifierCV
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (balanced_accuracy_score, confusion_matrix, f1_score,
                              roc_auc_score, roc_curve)
 from sklearn.model_selection import StratifiedGroupKFold
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
-from sklearn.svm import SVC
 
 from . import __version__
 from .features import colunas_features, tabela_features
@@ -41,18 +34,9 @@ log = logging.getLogger(__name__)
 
 
 def candidatos(seed: int) -> dict:
-    def pipe(clf, escalar=True):
-        passos = [("imputar", SimpleImputer(strategy="median"))]
-        if escalar:
-            passos.append(("escalar", StandardScaler()))
-        return Pipeline(passos + [("clf", clf)])
-    return {
-        "log_reg": pipe(LogisticRegression(max_iter=3000, class_weight="balanced", random_state=seed)),
-        "random_forest": pipe(RandomForestClassifier(n_estimators=400, class_weight="balanced",
-                                                     random_state=seed, n_jobs=-1), escalar=False),
-        "svm_rbf": pipe(CalibratedClassifierCV(SVC(kernel="rbf", class_weight="balanced", random_state=seed),
-                                               ensemble=False)),
-    }
+    """Catálogo de classificadores (nome -> estimador não treinado). Ver também fiep.experimentos."""
+    from .catalogo import classificadores
+    return classificadores(seed)
 
 
 def _metricas(y, proba, limiar=0.5) -> dict:
@@ -77,9 +61,12 @@ def montar_tabela(ds: Dataset, cfg: dict, grade: np.ndarray | None = None):
     """QC -> curvas -> matriz na grade -> features. Retorna (tabela, grade, qc)."""
     qc = avaliar(ds.medicoes, ds.pontos, cfg)
     ok = aceitas(qc, cfg)
+    tecnica = cfg["dados"].get("tecnica")
+    if tecnica:                      # não mistura técnicas (ex.: um CV na mesma pasta dos DPV)
+        ok &= set(ds.medicoes.loc[ds.medicoes["tecnica"].fillna(tecnica) == tecnica, "measurement_id"])
     curvas = curvas_por_medicao(ds.pontos, ok, cfg)
     if not curvas:
-        raise ValueError("Nenhuma medição passou no controle de qualidade.")
+        raise ValueError(f"Nenhuma medição {tecnica or ''} passou no controle de qualidade.".replace("  ", " "))
     if grade is None:
         grade = inferir_grade(curvas, cfg)
     matriz = para_matriz(curvas, grade, cfg)
@@ -88,9 +75,14 @@ def montar_tabela(ds: Dataset, cfg: dict, grade: np.ndarray | None = None):
 
 
 def _git_commit() -> str:
+    """Commit do código; '+modificado' quando há alterações não commitadas no pacote."""
+    raiz = Path(__file__).resolve().parents[1]
     try:
-        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
-                              text=True, check=True).stdout.strip()
+        h = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+                           check=True, cwd=raiz).stdout.strip()
+        sujo = subprocess.run(["git", "status", "--porcelain", "--", "fiep", "configs"], capture_output=True,
+                              text=True, cwd=raiz).stdout.strip()
+        return h + ("+modificado" if sujo else "")
     except Exception:  # noqa: BLE001
         return "desconhecido"
 
@@ -135,44 +127,62 @@ def treinar(ds: Dataset, cfg: dict, pasta_modelos: str | Path = "modelos") -> di
     final = candidatos(mcfg["seed"])[melhor["modelo"]]
     final.fit(X, y)
 
-    run_id = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    pasta = Path(pasta_modelos) / run_id
-    pasta.mkdir(parents=True, exist_ok=True)
-    cartao = {
-        "id": run_id,
-        "versao_pipeline": __version__,
-        "commit": _git_commit(),
-        "criado_em": dt.datetime.now().isoformat(timespec="seconds"),
-        "modelo": melhor["modelo"],
-        "limiar": float(melhor["limiar"]),
-        "metricas_cv": {k: (float(v) if isinstance(v, (int, float, np.floating, np.integer)) else v)
-                        for k, v in melhor.items() if k != "modelo"},
-        "n_linhas": int(len(y)), "n_amostras": int(len(set(grupos))),
-        "classes": {"0": int((y == 0).sum()), "1": int((y == 1).sum())},
-        "n_folds": int(n_folds),
-        "n_medicoes_qc": qc["qc_final"].value_counts().to_dict(),
-        "impressao_dados": _impressao_dados(ds),
-        "n_features": len(feats),
-    }
-    joblib.dump({"modelo": final, "features": feats, "grade": grade, "cfg": cfg,
-                 "limiar": cartao["limiar"], "cartao": cartao}, pasta / "modelo.joblib")
-    (pasta / "cartao.json").write_text(json.dumps(cartao, indent=2, ensure_ascii=False, default=str))
+    pasta, cartao = salvar_pacote(
+        final, feats, grade, cfg, float(melhor["limiar"]), melhor["modelo"],
+        metricas_cv={k: v for k, v in melhor.items() if k != "modelo"},
+        info={"n_linhas": int(len(y)), "n_amostras": int(len(set(grupos))),
+              "classes": {"0": int((y == 0).sum()), "1": int((y == 1).sum())}, "n_folds": int(n_folds),
+              "n_medicoes_qc": qc["qc_final"].value_counts().to_dict(), "impressao_dados": _impressao_dados(ds)},
+        pasta_modelos=pasta_modelos)
     metr.to_csv(pasta / "metricas_cv.csv", index=False)
     qc.to_csv(pasta / "qc_treino.csv", index=False)
     pd.DataFrame({"sample_id": grupos, "replicate_id": tabela["replicate_id"].to_numpy(), "y": y,
                   **{f"proba_{k}": v for k, v in oof.items()}}).to_csv(pasta / "previsoes_cv.csv", index=False)
-
-    reg = Path(pasta_modelos) / "registro.csv"
-    linha = pd.DataFrame([{"id": run_id, "modelo": cartao["modelo"], "commit": cartao["commit"],
-                           "balanced_accuracy": cartao["metricas_cv"]["balanced_accuracy"],
-                           "roc_auc": cartao["metricas_cv"]["roc_auc"], "n_amostras": cartao["n_amostras"],
-                           "impressao_dados": cartao["impressao_dados"]}])
-    linha.to_csv(reg, mode="a", header=not reg.exists(), index=False)
-    (Path(pasta_modelos) / "ATUAL").write_text(run_id)
     _mlflow(cartao, metr, pasta)
     log.info("Modelo salvo em %s (%s, balanced_acc=%.3f)", pasta, cartao["modelo"],
              cartao["metricas_cv"]["balanced_accuracy"])
     return {"pasta": pasta, "cartao": cartao, "metricas": metr}
+
+
+def _num(v):
+    return float(v) if isinstance(v, (int, float, np.floating, np.integer)) and not isinstance(v, bool) else v
+
+
+def salvar_pacote(modelo, feats, grade, cfg, limiar, nome_modelo, metricas_cv, info,
+                  pasta_modelos="modelos", extras: dict | None = None, adicionais: dict | None = None):
+    """Grava modelo + grade + config + features + limiar em modelos/<id>/ e atualiza registro e ATUAL."""
+    run_id = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    base = Path(pasta_modelos)
+    pasta = base / run_id
+    k = 1
+    while pasta.exists():                      # dois treinos no mesmo segundo
+        k += 1
+        pasta = base / f"{run_id}-{k}"
+    pasta.mkdir(parents=True)
+    cartao = {
+        "id": pasta.name,
+        "versao_pipeline": __version__,
+        "commit": _git_commit(),
+        "criado_em": dt.datetime.now().isoformat(timespec="seconds"),
+        "modelo": nome_modelo,
+        "limiar": float(limiar),
+        "metricas_cv": {k: _num(v) for k, v in metricas_cv.items()},
+        "n_features": len(feats),
+        **info,
+        **(extras or {}),
+    }
+    joblib.dump({"modelo": modelo, "features": feats, "grade": grade, "cfg": cfg,
+                 "limiar": cartao["limiar"], "cartao": cartao, **(adicionais or {})}, pasta / "modelo.joblib")
+    (pasta / "cartao.json").write_text(json.dumps(cartao, indent=2, ensure_ascii=False, default=str),
+                                       encoding="utf-8")
+    reg = base / "registro.csv"
+    pd.DataFrame([{"id": cartao["id"], "modelo": nome_modelo, "commit": cartao["commit"],
+                   "balanced_accuracy": cartao["metricas_cv"].get("balanced_accuracy"),
+                   "roc_auc": cartao["metricas_cv"].get("roc_auc"), "n_amostras": cartao.get("n_amostras"),
+                   "impressao_dados": cartao.get("impressao_dados")}]).to_csv(
+        reg, mode="a", header=not reg.exists(), index=False)
+    (base / "ATUAL").write_text(cartao["id"])
+    return pasta, cartao
 
 
 def _mlflow(cartao: dict, metr: pd.DataFrame, pasta: Path) -> None:

@@ -8,7 +8,7 @@ a migração para Postgres quando houver coleta contínua nas empresas.
 ## Comandos
 
 ```bash
-fiep db importar --entrada Dados                 # lê .nox/tabelas, grava e roda o QC
+fiep db importar --entrada dados/treino          # lê .nox/tabelas, grava e roda o QC
 fiep db importar --entrada coleta_empresa1/      # novos lotes: soma ao que já existe
 fiep db resumo
 fiep db sql "SELECT * FROM v_replicatas WHERE n_aprovadas < 3"
