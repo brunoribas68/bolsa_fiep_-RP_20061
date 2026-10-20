@@ -31,6 +31,14 @@ modo = "diferenca_estagios"       # "diferenca_estagios" | "estagio_unico"
 estagio_unico = "capture_probe_16S_rRNA"
 curva_delta_completa = true
 
+[divisao]
+# Dados soltos em dados/ são divididos por amostra (estratificado pela classe) nestas proporções.
+# Dados em dados/treino, dados/validacao e dados/teste são somados ao conjunto da pasta.
+# Padrão 50/25/25: Hastie, Tibshirani & Friedman, The Elements of Statistical Learning, seção 7.2.
+treino = 0.50
+validacao = 0.25
+teste = 0.25
+
 [modelo]
 candidatos = ["log_reg", "random_forest", "svm_rbf"]
 n_folds = 5

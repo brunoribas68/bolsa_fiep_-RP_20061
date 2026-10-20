@@ -1,20 +1,20 @@
-\begin{tabular}{llcccc}
+\begin{tabular}{llccccc}
 \toprule
- & & \multicolumn{2}{c}{Validação cruzada} & \multicolumn{2}{c}{Teste} \\
-\cmidrule(lr){3-4}\cmidrule(lr){5-6}
-Variante & Modelo & RMSE & $R^2$ & RMSE & $R^2$ \\
+ & & CV (treino) & \multicolumn{2}{c}{Validação} & \multicolumn{2}{c}{Teste} \\
+\cmidrule(lr){3-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+Variante & Modelo & RMSE & RMSE & $R^2$ & RMSE & $R^2$ \\
 \midrule
-dif\_curva\_linha\_base & ridge & 0,79 & 0,72 & 0,81 & 0,66 \\
-dif\_curva\_linha\_base & pls & 0,82 & 0,70 & 0,86 & 0,61 \\
-dif\_curva\_linha\_base & svr & 0,92 & 0,62 & 0,92 & 0,55 \\
-dif\_curva\_linha\_base & hist\_gb & 0,93 & 0,62 & 1,05 & 0,42 \\
-dif\_curva\_linha\_base & extra\_trees & 0,98 & 0,58 & 1,05 & 0,42 \\
-dif\_curva\_linha\_base & random\_forest & 1,01 & 0,55 & 1,10 & 0,36 \\
-dif\_resumo & ridge & 1,06 & 0,50 & 1,02 & 0,45 \\
-dif\_resumo & pls & 1,06 & 0,50 & 1,05 & 0,42 \\
-dif\_resumo & extra\_trees & 1,13 & 0,44 & 1,20 & 0,24 \\
-dif\_resumo & random\_forest & 1,15 & 0,41 & 1,30 & 0,11 \\
-dif\_resumo & hist\_gb & 1,16 & 0,41 & 1,20 & 0,24 \\
-dif\_resumo & svr & 1,27 & 0,29 & 1,39 & -0,02 \\
+dif\_curva\_sem\_suavizar & ridge & 0,95 & 0,69 & 0,74 & 0,87 & 0,69 \\
+dif\_curva\_sem\_suavizar & pls & 0,95 & 0,69 & 0,74 & 0,86 & 0,70 \\
+dif\_curva\_sem\_suavizar & hist\_gb & 1,12 & 0,77 & 0,68 & 0,99 & 0,60 \\
+dif\_curva\_sem\_suavizar & svr & 1,05 & 0,80 & 0,65 & 0,97 & 0,62 \\
+dif\_curva\_sem\_suavizar & extra\_trees & 1,13 & 0,86 & 0,60 & 1,02 & 0,58 \\
+dif\_curva\_sem\_suavizar & random\_forest & 1,15 & 0,88 & 0,58 & 1,09 & 0,53 \\
+dif\_resumo & ridge & 1,13 & 0,97 & 0,50 & 1,08 & 0,53 \\
+dif\_resumo & pls & 1,15 & 1,01 & 0,45 & 1,09 & 0,52 \\
+dif\_resumo & extra\_trees & 1,19 & 1,03 & 0,43 & 1,17 & 0,45 \\
+dif\_resumo & random\_forest & 1,20 & 1,07 & 0,38 & 1,22 & 0,41 \\
+dif\_resumo & hist\_gb & 1,21 & 1,10 & 0,35 & 1,29 & 0,33 \\
+dif\_resumo & svr & 1,42 & 1,26 & 0,14 & 1,19 & 0,43 \\
 \bottomrule
 \end{tabular}

@@ -22,10 +22,13 @@ dados/*
 !dados/exemplo_case/
 !dados/treino/
 !dados/validacao/
+!dados/teste/
 dados/treino/*
 dados/validacao/*
+dados/teste/*
 !dados/treino/.gitkeep
 !dados/validacao/.gitkeep
+!dados/teste/.gitkeep
 !dados/treino/LEIA-ME.md
 !dados/validacao/LEIA-ME.md
 *.db

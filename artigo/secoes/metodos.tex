@@ -74,15 +74,23 @@ segura \citep{fan2008} mantém os 25 candidatos de maior separação entre as cl
 busca exaustiva escolhe a combinação de até dois candidatos com maior acurácia balanceada em uma
 regressão logística.
 
-O protocolo evita que medições da mesma amostra apareçam em treino e teste. Antes de qualquer
-ajuste, separa-se o conjunto de teste: as amostras de validação externa, quando disponíveis, ou
-20\% das amostras, estratificadas pela classe. No conjunto de treino, cada combinação de
-representação e modelo é avaliada por validação cruzada em cinco dobras agrupadas por amostra
-(\textit{StratifiedGroupKFold}); o limiar de decisão é o que maximiza o índice J de Youden
-\citep{youden1950} nas previsões fora da dobra. A combinação com maior acurácia balanceada média na
-validação cruzada é escolhida e só então avaliada no teste. Para a regressão da carga, usam-se as
-amostras contaminadas, validação cruzada agrupada e os modelos Ridge, PLS, SVR, floresta aleatória,
-\textit{extra trees} e \textit{gradient boosting}.
+Antes de qualquer ajuste, as amostras são divididas em três conjuntos --- treino
+(\PropTreino\%), validação (\PropValidacao\%) e teste (\PropTeste\%) ---, a divisão típica
+sugerida por \citet[seção~7.2]{hastie2009}: o treino ajusta os modelos, a validação escolhe entre
+eles e o teste estima o erro de generalização do modelo escolhido. A divisão é feita por amostra
+(todas as réplicas e estágios de uma amostra ficam no mesmo conjunto), estratificada pela classe,
+para que medições da mesma amostra não apareçam em conjuntos diferentes \citep{kapoor2023}. Coletas
+reservadas para validação externa (por exemplo, de outra empresa) entram inteiras no teste.
+
+No treino, cada combinação de representação e modelo é avaliada também por validação cruzada em
+cinco dobras agrupadas por amostra (\textit{StratifiedGroupKFold}), que dá a estabilidade do
+desempenho e o limiar de decisão --- o que maximiza o índice J de Youden \citep{youden1950} nas
+previsões fora da dobra. O modelo ajustado no treino classifica a validação com esse limiar, e a
+combinação escolhida é a de maior acurácia balanceada na validação (\CriterioEscolha). Só então a
+combinação é re-treinada com treino e validação juntos e avaliada uma única vez no teste, que não
+participa de nenhuma escolha \citep{raschka2018,vabalas2019}. Para a regressão da carga, usam-se as
+amostras contaminadas, o mesmo protocolo (escolha pelo RMSE na validação) e os modelos Ridge, PLS,
+SVR, floresta aleatória, \textit{extra trees} e \textit{gradient boosting}.
 
 As métricas de classificação são a acurácia balanceada (AB, média de sensibilidade e
 especificidade, adequada a classes desbalanceadas), sensibilidade, especificidade e área sob a
