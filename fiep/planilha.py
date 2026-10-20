@@ -64,6 +64,24 @@ def _ler(destino: Path, colunas: list[str]) -> pd.DataFrame:
         return pd.read_csv(destino, dtype=str, sep=None, engine="python", encoding="cp1252")
 
 
+def _exportacoes(pasta: Path) -> dict:
+    """Excel/CSV exportados do NOVA na pasta (que não sejam cópia de um .nox): {caminho: (info, [curva])}."""
+    from .ingest import EXT_TABELA
+    from .io.nox import exportacao_to_curves
+    stems = {p.stem for p in pasta.rglob("*.nox")}
+    out = {}
+    for arq in sorted(p for p in pasta.rglob("*") if p.suffix.lower() in EXT_TABELA):
+        if arq.name in {"metadados_nox.csv", "amostras.csv"}:
+            continue
+        try:
+            for nome, info, curva in exportacao_to_curves(arq):
+                if nome not in stems:
+                    out[arq.parent / f"{nome}{arq.suffix}"] = (info, [curva])
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
 def gerar_planilha(pasta: str | Path, nome: str = "metadados_nox.csv", cfg: dict | None = None) -> tuple[Path, int]:
     """Cria/atualiza `metadados_nox.csv` e `amostras.csv`. Devolve (caminho da planilha, nº de linhas novas)."""
     pasta = Path(pasta)
@@ -72,15 +90,17 @@ def gerar_planilha(pasta: str | Path, nome: str = "metadados_nox.csv", cfg: dict
     existente = _ler(destino, COLUNAS)
     ja = set(existente.get("arquivo", pd.Series(dtype=str)).astype(str))
 
+    exportados = _exportacoes(pasta)
+    todos = sorted([*pasta.rglob("*.nox"), *exportados])
     novas, novos_arq, infos = [], [], {}
-    for arq in sorted(pasta.rglob("*.nox")):
+    for arq in todos:
         rel = arq.relative_to(pasta).as_posix()
         if rel in ja or arq.name in ja:
             continue
         linha = {c: "" for c in COLUNAS}
         linha.update({"arquivo": rel, "measurement_id": arq.stem})
         try:
-            info, curvas = nox_to_curves(arq)
+            info, curvas = exportados[arq] if arq in exportados else nox_to_curves(arq)
             infos[arq] = info
         except Exception as e:  # noqa: BLE001
             linha["observacoes"] = f"não foi possível ler: {e}"
@@ -96,7 +116,7 @@ def gerar_planilha(pasta: str | Path, nome: str = "metadados_nox.csv", cfg: dict
         novos_arq.append(arq)
 
     # tudo o que dá para deduzir (amostra, réplica, estágio, data...) já vem preenchido
-    todos = sorted(pasta.rglob("*.nox"))
+    infos.update({k: v[0] for k, v in exportados.items()})
     auto = inferir(todos, infos, cfg)
     por_rel = {r["_caminho"].relative_to(pasta).as_posix(): r for _, r in auto.iterrows()} if len(auto) else {}
     for linha in novas:
@@ -132,7 +152,8 @@ def gerar_planilha(pasta: str | Path, nome: str = "metadados_nox.csv", cfg: dict
                 preenchidos.append(k)
         if "tecnica" not in existente or pd.isna(r.get("tecnica")) or not str(r.get("tecnica")).strip():
             try:
-                _, cv = nox_to_curves(ded["_caminho"])
+                _, cv = exportados[ded["_caminho"]] if ded["_caminho"] in exportados \
+                    else nox_to_curves(ded["_caminho"])
                 if cv:
                     existente.at[i, "tecnica"] = cv[0]["tecnica"]
                     existente.at[i, "n_pontos"] = str(len(cv[0]["potential_v"]))

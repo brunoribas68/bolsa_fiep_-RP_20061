@@ -37,6 +37,14 @@ curva_delta_completa = true
 #   padrao_nome = '(?P<sample_id>EMP\d+-S\d+)-R(?P<replicate_id>\d+)'
 padrao_nome = ""
 
+[niveis]
+# Nível da contaminação pela carga estimada (log10 UFC/mL) nas amostras classificadas como
+# contaminadas. Vazio = só "detectada" / "não detectada". Os limites são decisão da equipe, ex.:
+#   limites_log10 = [3.0, 5.0]
+#   nomes = ["baixa", "moderada", "alta"]      # (um nome a mais que limites)
+limites_log10 = []
+nomes = []
+
 [divisao]
 # Dados soltos em dados/ são divididos por amostra (estratificado pela classe) nestas proporções.
 # Dados em dados/treino, dados/validacao e dados/teste são somados ao conjunto da pasta.

@@ -307,6 +307,34 @@ def detectar_tecnica(nome_comando: str) -> str:
     return "OUTRA"
 
 
+def curva_de_tabela(df, tecnica: str, comando: str = ""):
+    """Curva canônica a partir de uma tabela com as colunas do NOVA (do .nox ou exportada para Excel/CSV)."""
+    cols = set(df.columns)
+    par = next(((x, y) for x, y in _SINAL_POR_TECNICA if x in cols and y in cols), None)
+    if par is None:
+        return None
+    x, y = par
+    e_med = next((c for c in df.columns if re.match(r"WE\(1\)\.(Base\.|Forward\.)?Potential \(V\)$", str(c))), None)
+    i_bruta = next((c for c in df.columns if re.match(r"WE\(1\)\.(Base\.|Forward\.)?Current \(A\)$", str(c))), None)
+    d = df.copy()
+    for col in [x, y, e_med, i_bruta, "Scan"]:
+        if col in d:
+            d[col] = pd_to_num(d[col])
+    d = d.dropna(subset=[x, y])
+    if d.empty:
+        return None
+    return {
+        "tecnica": tecnica,
+        "comando": comando,
+        "potential_v": d[x].tolist(),
+        "current_ua": (d[y] * 1e6).tolist(),
+        "scan_index": d["Scan"].astype(int).tolist() if "Scan" in d else [1] * len(d),
+        "e_medido_v": d[e_med].tolist() if e_med else None,
+        # corrente bruta (base/forward): detecta sobrecarga que a corrente diferencial esconde
+        "i_bruta_ua": (d[i_bruta] * 1e6).tolist() if i_bruta else None,
+    }
+
+
 def nox_to_curves(path, incluir_brutos: bool = False):
     """Converte um .nox em uma lista de curvas no formato canônico.
 
@@ -321,25 +349,77 @@ def nox_to_curves(path, incluir_brutos: bool = False):
     for nome, df in res["medicoes"]:
         if not df.attrs.get("medidas"):
             continue                              # tabelas de análise (picos, ajustes) ficam de fora
-        cols = set(df.columns)
-        par = next(((x, y) for x, y in _SINAL_POR_TECNICA if x in cols and y in cols), None)
-        if par is None:
-            continue
-        x, y = par
-        e_med = next((c for c in df.columns if re.match(r"WE\(1\)\.(Base\.|Forward\.)?Potential \(V\)$", c)), None)
-        i_bruta = next((c for c in df.columns if re.match(r"WE\(1\)\.(Base\.|Forward\.)?Current \(A\)$", c)), None)
-        scan = df["Scan"] if "Scan" in cols else None
-        d = df.dropna(subset=[x, y])
-        curvas.append({
-            "tecnica": detectar_tecnica(nome),
-            "comando": nome,
-            "potential_v": pd_to_num(d[x]).tolist(),
-            "current_ua": (pd_to_num(d[y]) * 1e6).tolist(),
-            "scan_index": (pd_to_num(d["Scan"]).astype(int).tolist() if scan is not None
-                           else [1] * len(d)),
-            "e_medido_v": pd_to_num(d[e_med]).tolist() if e_med else None,
-            # corrente bruta (base/forward): detecta sobrecarga que a corrente diferencial esconde
-            "i_bruta_ua": (pd_to_num(d[i_bruta]) * 1e6).tolist() if i_bruta else None,
-        })
+        cv = curva_de_tabela(df, detectar_tecnica(nome), nome)
+        if cv:
+            curvas.append(cv)
     return res["info"], curvas
 
+
+
+# =====================================================================
+#  Exportações do NOVA (Excel/CSV): mesmas colunas, sem o .nox
+# =====================================================================
+
+def eh_exportacao_nova(colunas) -> bool:
+    cols = {str(c).strip() for c in colunas}
+    return any(x in cols and y in cols for x, y in _SINAL_POR_TECNICA)
+
+
+def _tecnica_por_nome(nome: str, cols) -> str:
+    n = nome.lower()
+    for rx, tec in [(r"swv|square", "SWV"), (r"dpv|differential", "DPV"), (r"(^|[^a-z])(cv|cyclic)([^a-z]|$)", "CV"),
+                    (r"lsv|linear", "LSV")]:
+        if re.search(rx, n):
+            return tec
+    return "DPV" if "WE(1).δ.Current (A)" in set(cols) else "CV"
+
+
+def _ler_csv_nova(path):
+    import pandas as pd
+    for enc in ("utf-8-sig", "cp1252"):
+        try:
+            df = pd.read_csv(path, sep=None, engine="python", encoding=enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    # CSV do Excel em português: vírgula decimal
+    for col in df.columns:
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            conv = pd.to_numeric(df[col].astype(str).str.replace(".", "", regex=False)
+                                 .str.replace(",", ".", regex=False), errors="coerce")
+            if conv.notna().mean() > 0.9 and pd.to_numeric(df[col], errors="coerce").notna().mean() < 0.5:
+                df[col] = conv
+    return df
+
+
+def exportacao_to_curves(path):
+    """Lê um Excel/CSV exportado pelo NOVA (ou por `fiep excel`). Devolve [(nome, info, curva)],
+    uma por planilha/aba que tenha potencial aplicado x corrente."""
+    import pandas as pd
+    from pathlib import Path
+    path = Path(path)
+    if path.suffix.lower() in {".xlsx", ".xls"}:
+        abas = pd.read_excel(path, sheet_name=None)
+    else:
+        abas = {path.stem: _ler_csv_nova(path)}
+    abas = {k: v.rename(columns=lambda c: str(c).strip()) for k, v in abas.items()}
+    validas = {k: v for k, v in abas.items() if eh_exportacao_nova(v.columns)
+               and str(k).strip().lower() not in {"todos", "todas", "all", "info", "parametros"}}
+    info_aba = next((v for k, v in abas.items() if str(k).lower() == "info" and "arquivo" in v), None)
+    saida = []
+    for aba, df in validas.items():
+        nome = path.stem if len(validas) == 1 else f"{path.stem}_{aba}"
+        info = {"arquivo": path.name}
+        if info_aba is not None:              # Excel do `fiep excel --juntar`: aba Info com o cabeçalho de cada .nox
+            stems = info_aba["arquivo"].astype(str).map(lambda s: Path(s).stem)
+            aba_s = str(aba).strip()
+            linha = info_aba[(stems == aba_s) | stems.str.endswith("_" + aba_s)]
+            if len(linha) != 1 and len(validas) == 1 and len(info_aba) == 1:
+                linha = info_aba
+            if len(linha) == 1:
+                info.update({k: v for k, v in linha.iloc[0].items() if pd.notna(v)})
+                nome = Path(str(linha.iloc[0]["arquivo"])).stem
+        cv = curva_de_tabela(df, _tecnica_por_nome(f"{nome} {info.get('procedimento', '')}", df.columns), str(aba))
+        if cv:
+            saida.append((nome, info, cv))
+    return saida

@@ -29,7 +29,7 @@ from .ingest import Dataset, ingerir, juntar, tem_dados
 log = logging.getLogger(__name__)
 
 CONJUNTOS = ("treino", "validacao", "teste")
-RESERVADAS = (*CONJUNTOS, "exemplo_case")
+RESERVADAS = (*CONJUNTOS, "exemplo_case", "excel")     # dados/excel: cópias em Excel dos .nox
 PROPORCOES_PADRAO = {"treino": 0.50, "validacao": 0.25, "teste": 0.25}
 ROTULO = "contamination_status"
 

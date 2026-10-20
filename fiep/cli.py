@@ -76,17 +76,25 @@ def _treinar(a, ds=None):
 def _prever(a):
     from .model import carregar
     from .predict import prever
+    from .predict import resumo_por_amostra
     pacote = carregar(a.modelo)
-    res = prever(a.entrada, pacote)
+    res = prever(a.entrada, pacote, niveis=load_config(a.config).get("niveis"))
+    am = resumo_por_amostra(res)
     if getattr(a, "db", None):
         from . import db
         con = db.conectar(a.db)
         n = db.gravar_predicoes(con, res, pacote["cartao"], a.modelo)
         print(f"{n} previsões gravadas em {a.db} (modelo {pacote['cartao']['id']}).")
+    if len(am):
+        print("Por amostra:")
+        print(am.to_string(index=False))
+        print("\nPor réplica:")
     print(res.drop(columns=["measurement_id"], errors="ignore").to_string(index=False))
     if a.saida:
         res.to_csv(a.saida, index=False)
-        print(f"\nSalvo em {a.saida}")
+        destino_am = Path(a.saida).with_name(Path(a.saida).stem + "_amostras.csv")
+        am.to_csv(destino_am, index=False)
+        print(f"\nSalvo em {a.saida} e {destino_am}")
 
 
 def _experimento(a):
@@ -120,6 +128,15 @@ def _experimento(a):
         print("\nRegressão da carga (log10 UFC/mL, contaminadas):")
         print(r["regressao"].round(3).to_string(index=False))
     res = r["resumo"]
+    ta = res.get("teste_por_amostra")
+    if ta:
+        print(f"\nTeste por amostra ({ta['n_amostras']} amostras, média das réplicas): "
+              f"AB {ta['balanced_accuracy']:.3f} | sensibilidade {ta['sensibilidade']:.3f} | "
+              f"especificidade {ta['especificidade']:.3f}")
+    if res.get("teste_niveis"):
+        tn = res["teste_niveis"]
+        print(f"Níveis de contaminação no teste: acurácia {tn['acuracia']:.3f} (AB {tn['balanced_accuracy']:.3f}); "
+              f"matriz em {r['pasta']}/niveis_teste.csv")
     if res.get("formula_sisso"):
         print(f"\nSISSO: {res['formula_sisso']}")
     print(f"\nResultados em {r['pasta']}" + (f" | modelo registrado: {res.get('modelo_registrado')}" if res.get("modelo_registrado") else ""))
@@ -152,6 +169,12 @@ def _servir(a):
         os.environ["FIEP_DB"] = str(Path(a.db).resolve())
     print(f"Abra http://{a.host}:{a.porta} no navegador (Ctrl+C para parar)")
     uvicorn.run("api.app:app", host=a.host, port=a.porta, reload=False)
+
+
+def _excel(a):
+    from .excel import converter_pasta
+    gerados = converter_pasta(a.entrada, a.saida, refazer=a.refazer)
+    print(f"{len(gerados)} arquivo(s) convertido(s)" + (f" em {gerados[0].parent}" if gerados else " (já estavam em dia)"))
 
 
 def _planilha(a):
@@ -196,6 +219,12 @@ def _db(a):
             raise FileNotFoundError(f"Nenhum dado em {base}")
         if a.conjunto:
             partes = [(a.conjunto, p, ex) for _, p, ex in partes]
+        if not a.sem_excel:                 # cópia em Excel (formato NOVA) de cada .nox, em dados/excel/
+            from .excel import converter_pasta
+            n = sum(len(converter_pasta(p)) for _, p, _ in partes if p.name != "exemplo_case"
+                    and any(p.rglob("*.nox")))
+            if n:
+                print(f"{n} .nox convertido(s) para Excel em dados/excel/")
         for conjunto, pasta, excluir in partes:
             ds = ingerir(pasta, excluir=excluir)
             ds.medicoes["conjunto"] = conjunto
@@ -263,6 +292,7 @@ def main(argv=None):
     p.add_argument("--modelo", default="modelos", help="pasta de modelos (usa ATUAL) ou pasta/arquivo de um modelo")
     p.add_argument("--saida")
     p.add_argument("--db", help="gravar as previsões neste banco SQLite")
+    p.add_argument("--config", help="configuração com os [niveis] de contaminação (padrão: a do modelo)")
     p.set_defaults(fn=_prever)
 
     p = sub.add_parser("experimento", help="compara variantes de features x modelos e registra o melhor")
@@ -294,12 +324,19 @@ def main(argv=None):
     p.add_argument("--config")
     p.set_defaults(fn=_planilha)
 
+    p = sub.add_parser("excel", help="converte os .nox de uma pasta para Excel (formato do NOVA)")
+    p.add_argument("--entrada", required=True, help="pasta com .nox (ex.: dados/empresa1)")
+    p.add_argument("--saida", help="pasta de saída (padrão: dados/excel/<lote>)")
+    p.add_argument("--refazer", action="store_true", help="converte de novo mesmo se o Excel já existir")
+    p.set_defaults(fn=_excel)
+
     p = sub.add_parser("db", help="banco de dados SQLite: importar, resumo, exportar, sql")
     p.add_argument("acao", choices=["importar", "resumo", "exportar", "sql"])
     p.add_argument("consulta", nargs="?", help="consulta SQL (para a ação sql)")
     p.add_argument("--db", default="dados/fiep.db")
     p.add_argument("--entrada", help="pasta com .nox/tabelas (para importar); com dados/, as subpastas "
                                      "treino/validacao/teste são gravadas com o seu conjunto")
+    p.add_argument("--sem-excel", action="store_true", help="não gerar a cópia em Excel dos .nox (dados/excel/)")
     p.add_argument("--conjunto", choices=["treino", "validacao", "teste"],
                    help="grava tudo o que for importado como deste conjunto")
     p.add_argument("--config")

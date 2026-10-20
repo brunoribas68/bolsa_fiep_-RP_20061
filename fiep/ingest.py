@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .io.nox import nox_to_curves
+from .io.nox import exportacao_to_curves, nox_to_curves
 
 log = logging.getLogger(__name__)
 
@@ -194,11 +194,16 @@ def _medicoes_do_case(sinal: pd.DataFrame, meta: pd.DataFrame, rel: Relatorio):
 
 
 def _medicoes_do_nox(arquivos: list[Path], indice: pd.DataFrame, rel: Relatorio, base: Path | None = None,
-                     cfg: dict | None = None):
+                     cfg: dict | None = None, exportados: list | None = None):
     """Lê os .nox. Os metadados são deduzidos automaticamente (fiep/metadados_auto.py) e a planilha,
     se houver, só corrige: um valor preenchido nela vence o deduzido."""
     from .metadados_auto import id_medicao, inferir
     lidos, infos = {}, {}
+    stems_nox = {a.stem for a in arquivos}
+    for caminho, info, curva in exportados or []:      # Excel/CSV exportados do NOVA
+        if caminho.stem in stems_nox:
+            continue                                   # é cópia de um .nox que já está no lote
+        lidos[caminho], infos[caminho] = curva, info
     for caminho in arquivos:
         try:
             info, curvas = nox_to_curves(caminho)
@@ -244,7 +249,8 @@ def _medicoes_do_nox(arquivos: list[Path], indice: pd.DataFrame, rel: Relatorio,
         reg.update(man)
         mid = reg.get("measurement_id")
         mid = mid if isinstance(mid, str) and mid else id_medicao(reg.get("sample_id"), caminho.stem)
-        reg.update({"measurement_id": mid, "tecnica": c["tecnica"], "fonte": "nox", "arquivo_origem": caminho.name})
+        reg.update({"measurement_id": mid, "tecnica": c["tecnica"],
+                    "fonte": "nox" if caminho.suffix.lower() == ".nox" else "exportacao", "arquivo_origem": caminho.name})
         meds.append(reg)
         n = len(c["potential_v"])
         pts.append(pd.DataFrame({
@@ -255,7 +261,8 @@ def _medicoes_do_nox(arquivos: list[Path], indice: pd.DataFrame, rel: Relatorio,
             "e_medido_v": c["e_medido_v"] if c["e_medido_v"] is not None else [np.nan] * n,
             "i_bruta_ua": c["i_bruta_ua"] if c["i_bruta_ua"] is not None else [np.nan] * n,
         }))
-        rel.arquivos[caminho.name] = f"nox:{c['tecnica']} ({n} pontos)"
+        rel.arquivos[caminho.name] = f"{'nox' if caminho.suffix.lower() == '.nox' else 'exportação NOVA'}:" \
+            f"{c['tecnica']} ({n} pontos)"
     if n_auto:
         log.info("%d .nox com amostra/estágio deduzidos automaticamente (confira com `fiep planilha`).", n_auto)
     return pd.DataFrame(meds), _concat(pts)
@@ -326,7 +333,19 @@ def ingerir(pasta_entrada: str | Path, excluir: tuple[str, ...] = (), cfg: dict 
     buckets: dict[str, list[pd.DataFrame]] = {p: [] for p in PAPEIS}
     noxs, tabelas = arquivos_de_dados(pasta, excluir)
     origem = []
+    exportados = []
     for arq in tabelas:
+        try:                                           # Excel/CSV exportado do NOVA (mesmas colunas do .nox)
+            exp = exportacao_to_curves(arq)
+        except Exception:  # noqa: BLE001
+            exp = []
+        if exp:
+            for nome, info, curva in exp:
+                exportados.append((arq.parent / f"{nome}{arq.suffix}", info, curva))
+            rel.arquivos[arq.name] = f"exportação NOVA ({len(exp)} curva(s))"
+            origem.append({"arquivo": arq.name, "papel": "exportacao_nova", "sha256": sha256_arquivo(arq),
+                           "tamanho_bytes": arq.stat().st_size, "n_linhas": len(exp)})
+            continue
         try:
             df = _ler_tabela(arq)
         except Exception as e:  # noqa: BLE001
@@ -351,8 +370,9 @@ def ingerir(pasta_entrada: str | Path, excluir: tuple[str, ...] = (), cfg: dict 
     if not sinal.empty:
         m, p = _medicoes_do_case(sinal, meta.drop(columns="__arquivo", errors="ignore"), rel)
         meds.append(m), pts.append(p)
-    if noxs:
-        m, p = _medicoes_do_nox(noxs, indice.drop(columns="__arquivo", errors="ignore"), rel, base=pasta, cfg=cfg)
+    if noxs or exportados:
+        m, p = _medicoes_do_nox(noxs, indice.drop(columns="__arquivo", errors="ignore"), rel, base=pasta, cfg=cfg,
+                                exportados=exportados)
         if len(m):
             meds.append(m), pts.append(p)
     if not meds:

@@ -29,12 +29,14 @@ Requer Python 3.11 ou mais recente.
 ## Fluxo de trabalho
 
 ```bash
-# 1. coloque os .nox em dados/, uma pasta por amostra (ex.: dados/empresa1/contaminada/A01/).
+# 1. coloque os .nox (ou o Excel/CSV exportado pelo NOVA) em dados/, uma pasta por amostra
+#    (ex.: dados/empresa1/contaminada/A01/).
 #    Amostra, réplica (canal), estágio e data são deduzidos dos arquivos; o rótulo vem do nome
 #    da pasta ou de amostras.csv (uma linha por amostra), criado já preenchido por:
 fiep planilha --entrada dados/empresa1
 
-# 2. importe para o banco (dados/fiep.db) — roda o controle de qualidade
+# 2. importe para o banco (dados/fiep.db): gera a cópia em Excel de cada .nox (dados/excel/)
+#    e roda o controle de qualidade
 fiep db importar --entrada dados
 fiep db sql "SELECT * FROM v_replicatas WHERE n_aprovadas < 3"     # réplicas incompletas
 
@@ -44,8 +46,15 @@ fiep experimento --artigo
 
 # 4. use o modelo
 fiep servir                                    # página web + API
-fiep prever --entrada nova_coleta/ --db dados/fiep.db
+fiep prever --entrada nova_coleta/ --db dados/fiep.db   # resultado por amostra e por réplica
+fiep excel --entrada dados/empresa1            # só converter .nox -> Excel (formato do NOVA)
 ```
+
+**Resultado por amostra:** cada réplica (eletrodo) recebe uma probabilidade; a amostra é
+classificada pela média das réplicas aprovadas, com a concordância entre elas. Nas contaminadas,
+a carga estimada (log10 UFC/mL) define o **nível de contaminação** quando os limites de
+`[niveis]` estão configurados (ex.: baixa < 3 ≤ moderada < 5 ≤ alta) — os limites são decisão da
+equipe e podem mudar sem re-treinar.
 
 **Divisão dos dados:** o que estiver solto em `dados/` é dividido por amostra, estratificado pela
 classe, em 50% treino, 25% validação e 25% teste (Hastie et al., *Elements of Statistical Learning*,

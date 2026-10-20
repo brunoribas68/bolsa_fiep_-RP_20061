@@ -44,6 +44,10 @@ filtro SQL: `--filtro-teste "sensor_lot = 'L09'"`.
 
 **Não é preciso preencher arquivo por arquivo.** A pipeline deduz sozinha, de cada `.nox`:
 
+Vale tanto o `.nox` quanto o **Excel/CSV exportado pelo NOVA** (mesmas colunas: `Potential applied (V)`,
+`WE(1).δ.Current (A)`...). Quando os dois existem no mesmo lote, usa o `.nox`. `fiep db importar` guarda
+uma cópia em Excel de cada `.nox` em `dados/excel/` (essa pasta não entra no treino).
+
 | Campo | De onde vem |
 |---|---|
 | estágio do sensor | nome do arquivo (`limpo`, `sonda`/`oligo`, `rRNA`...) ou, se ele não disser, o nome do procedimento gravado no `.nox` |

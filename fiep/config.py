@@ -43,6 +43,9 @@ DEFAULTS: dict = {
     },
     # dedução automática dos metadados dos .nox (fiep/metadados_auto.py)
     "metadados": {"padrao_nome": ""},
+    # níveis de contaminação pela carga estimada (log10 UFC/mL); vazio = só detectada / não detectada
+    # ex.: {"limites_log10": [3.0, 5.0], "nomes": ["baixa", "moderada", "alta"]}
+    "niveis": {"limites_log10": [], "nomes": []},
     # proporções da divisão por amostra dos dados soltos em dados/ (ver fiep/divisao.py)
     "divisao": {"treino": 0.50, "validacao": 0.25, "teste": 0.25},
     "modelo": {

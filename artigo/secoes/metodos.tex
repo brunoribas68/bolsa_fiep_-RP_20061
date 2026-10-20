@@ -92,6 +92,12 @@ participa de nenhuma escolha \citep{raschka2018,vabalas2019}. Para a regressão 
 amostras contaminadas, o mesmo protocolo (escolha pelo RMSE na validação) e os modelos Ridge, PLS,
 SVR, floresta aleatória, \textit{extra trees} e \textit{gradient boosting}.
 
+Como cada amostra é medida em vários eletrodos, a decisão final por amostra usa a média das
+probabilidades das réplicas aprovadas no controle de qualidade. Nas amostras classificadas como
+contaminadas, a carga estimada pode ser convertida em níveis de contaminação por limites de
+log$_{10}$\,UFC/mL definidos pela equipe. \preencher{limites dos níveis (baixa, moderada, alta), se
+adotados}
+
 As métricas de classificação são a acurácia balanceada (AB, média de sensibilidade e
 especificidade, adequada a classes desbalanceadas), sensibilidade, especificidade e área sob a
 curva ROC (AUC); para a regressão, RMSE, MAE e $R^2$ em log$_{10}$\,UFC/mL.
