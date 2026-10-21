@@ -6,8 +6,8 @@ e corrigir (um valor preenchido nela sempre vence o deduzido).
 
 | Campo | De onde vem |
 |---|---|
-| `sensor_state` | nome do arquivo e, se ele não disser, nome do procedimento gravado no .nox (palavras-chave) |
-| `replicate_id` | canal do potenciostato (`MAC80058#2` -> `2`); senão, o sufixo do nome (`..._B`) |
+| `sensor_state` | nome do arquivo e, se ele não disser, nome do procedimento gravado no .nox (palavras-chave de cada protocolo, `fiep/protocolos.py`) |
+| `replicate_id` | eletrodo no nome (`bloqueio-E3` -> `E3`); senão, canal do potenciostato (`MAC80058#2` -> `2`) ou o sufixo do nome |
 | `sample_id` | a pasta do arquivo: uma pasta = uma amostra. Se a mesma pasta tiver dois arquivos do mesmo estágio no mesmo canal, separa por dia da medição |
 | `contamination_status` | nome de pasta/arquivo (`contaminada`, `nao_contaminada`, `positivo`, `negativo`, `controle_neg`) ou a tabela de amostras (`amostras.csv`, uma linha por amostra) |
 | `measurement_date` | data gravada no .nox |
@@ -23,11 +23,6 @@ from pathlib import Path
 
 import pandas as pd
 
-ESTAGIOS_PALAVRAS = [   # ordem importa: "Oligo 5N + rRNA" é o estágio rRNA, não o da sonda
-    (r"rrna|16s|hibrid|alvo|target|amostra", "capture_probe_16S_rRNA"),
-    (r"probe|sonda|oligo|captura|ssdna", "capture_probe"),
-    (r"limp|clean|branco|blank|carbon|carbono|bare|nu\b|tratad|ativad", "carbon_clean"),
-]
 ROTULO_PALAVRAS = [     # negativo antes do positivo: "nao_contaminada" contém "contaminada"
     (r"n[aã]o[_\- ]?contaminad|negativ|control[e]?[_\- ]?neg|\bneg\b|esteril|limpa\b", 0),
     (r"contaminad|positiv|control[e]?[_\- ]?pos|\bpos\b", 1),
@@ -43,8 +38,15 @@ def _busca(regras, texto):
     return None
 
 
-def estagio(texto: str) -> str | None:
-    return _busca(ESTAGIOS_PALAVRAS, texto)
+def estagio(texto: str, cfg: dict | None = None) -> str | None:
+    from .protocolos import estagio as _est
+    return _est(texto, cfg)
+
+
+def _eletrodo(stem: str) -> str | None:
+    """Eletrodo indicado no nome: bloqueio-E1, DPV_limpo_E2, eletrodo_3 -> E1, E2, E3."""
+    m = re.search(r"(?:^|[_\-\s.])(?:e|el|eletrodo|electrode)[_\-\s]?(\d{1,3})(?=$|[_\-\s.])", stem, re.I)
+    return f"E{int(m.group(1))}" if m else None
 
 
 def _canal(instrumento) -> str | None:
@@ -90,9 +92,11 @@ def inferir(arquivos: list[Path], infos: dict[Path, dict] | None = None, cfg: di
         if rx and (m := rx.search(caminho)):
             auto.update({k: v for k, v in m.groupdict().items() if v})
         # nome do arquivo primeiro (é o que a pessoa escolhe a cada medição); depois o procedimento
-        if "sensor_state" not in auto and (e := estagio(arq.stem) or estagio(proc)):
+        if "sensor_state" not in auto and (e := estagio(arq.stem, cfg) or estagio(proc, cfg)):
             auto["sensor_state"] = e
-        if "replicate_id" not in auto and (r := _canal(info.get("instrumento")) or _sufixo(arq.stem)):
+        # eletrodo: pelo nome (E1, E2...) e, se não houver, pelo canal do potenciostato
+        if "replicate_id" not in auto and (r := _eletrodo(arq.stem) or _canal(info.get("instrumento"))
+                                           or _sufixo(arq.stem)):
             auto["replicate_id"] = r
         if "contamination_status" not in auto:
             r = _busca(ROTULO_PALAVRAS, " ".join(arq.parent.parts[-3:]) + " " + arq.stem)

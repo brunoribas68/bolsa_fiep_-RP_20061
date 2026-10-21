@@ -371,7 +371,10 @@ def _tecnica_por_nome(nome: str, cols) -> str:
                     (r"lsv|linear", "LSV")]:
         if re.search(rx, n):
             return tec
-    return "DPV" if "WE(1).δ.Current (A)" in set(cols) else "CV"
+    cols = {str(c) for c in cols}
+    if any(".Backward." in c or c.startswith("Backward.") for c in cols):
+        return "SWV"                       # onda quadrada: correntes forward/backward
+    return "DPV" if "WE(1).δ.Current (A)" in cols else "CV"
 
 
 def _ler_csv_nova(path):

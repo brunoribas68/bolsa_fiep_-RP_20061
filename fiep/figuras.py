@@ -182,7 +182,7 @@ def _tex_escape(s: str) -> str:
 def nome_curto(s: str) -> str:
     """Nomes de características legíveis em tabelas, fórmulas e gráficos."""
     return (str(s).replace("capture_probe_16S_rRNA", "rRNA").replace("capture_probe", "sonda")
-            .replace("carbon_clean", "carbono").replace("delta_", "Δ").replace("_vs_", " vs ")
+            .replace("carbon_clean", "carbono").replace("mAb_NS1", "mAb").replace("delta_", "Δ").replace("_vs_", " vs ")
             .replace("_largura_meia_altura", " FWHM").replace("_i_pico", " i_pico").replace("_e_pico", " E_pico")
             .replace("_area", " área").replace("_amplitude", " amplitude").replace("_i_min", " i_min"))
 

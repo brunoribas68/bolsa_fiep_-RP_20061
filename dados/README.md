@@ -50,11 +50,20 @@ uma cópia em Excel de cada `.nox` em `dados/excel/` (essa pasta não entra no t
 
 | Campo | De onde vem |
 |---|---|
-| estágio do sensor | nome do arquivo (`limpo`, `sonda`/`oligo`, `rRNA`...) ou, se ele não disser, o nome do procedimento gravado no `.nox` |
-| réplica (eletrodo) | canal do potenciostato gravado no `.nox` (`MAC80058#2` → `2`) |
+| etapa do sensor | nome do arquivo ou, se ele não disser, o nome do procedimento gravado no `.nox` (ver protocolos abaixo) |
+| eletrodo (réplica) | `E1`, `E2`… no nome do arquivo; sem isso, o canal do potenciostato (`MAC80058#2` → `2`) |
 | amostra | a **pasta** do arquivo: uma pasta = uma amostra |
 | data | gravada no `.nox` |
 | contaminada ou não | nome da pasta: `contaminada/`, `nao_contaminada/`, `positivo/`, `negativo/`, `controle_neg/` |
+
+Protocolos reconhecidos (o modelo usa a diferença entre a última etapa e a anterior, no mesmo eletrodo):
+
+| Protocolo | Técnica | Etapas, na ordem | Exemplo de nomes |
+|---|---|---|---|
+| Imunossensor NS1 | SWV | bloqueio → mAb-NS1 → final | `bloqueio-E1.nox`, `mAb-NS1-E1.nox`, `final-E1.nox` |
+| rRNA 16S (case) | DPV | carbono limpo → sonda → sonda + rRNA | `DPV_limpo_E1`, `DPV_sonda_E1`, `DPV_rRNA_E1` |
+
+Outro protocolo: acrescente em `configs/default.toml` (`[protocolos.<nome>]`, ver `fiep/protocolos.py`).
 
 O jeito mais simples é organizar as pastas assim e não preencher nada:
 

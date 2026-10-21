@@ -13,6 +13,8 @@ from pathlib import Path
 DEFAULTS: dict = {
     "dados": {
         # estados do sensor na ordem do protocolo (antes -> depois do contato com o alvo)
+        # "auto": reconhece o protocolo (etapas e técnica) pelos dados; ver fiep/protocolos.py
+        "protocolo": "auto",
         "estagios": ["carbon_clean", "capture_probe", "capture_probe_16S_rRNA"],
         "tecnica": "DPV",
     },

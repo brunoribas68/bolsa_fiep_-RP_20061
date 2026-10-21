@@ -16,7 +16,6 @@ from ..modelo import limpo, registros
 
 r = APIRouter(prefix="/api", tags=["amostras"])
 
-ESTAGIOS = ["carbon_clean", "capture_probe", "capture_probe_16S_rRNA"]
 
 
 class EdicaoAmostra(BaseModel):
@@ -84,6 +83,15 @@ def _amostra(s: Session, sid: str) -> Amostra:
     return a
 
 
+@r.get("/protocolos")
+def protocolos(_=Depends(usuario_atual)):
+    """Protocolos de biossensor conhecidos: etapas na ordem, nomes e técnica."""
+    from fiep.protocolos import todos
+    return {k: {"nome": p["nome"], "tecnica": p["tecnica"],
+                "estagios": [{"id": e, "nome": p.get("nomes", {}).get(e, e)} for e in p["estagios"]]}
+            for k, p in todos().items()}
+
+
 @r.get("/amostras/{sid}")
 def detalhe(sid: str, s: Session = Depends(sessao), _=Depends(usuario_atual)):
     a = _amostra(s, sid)
@@ -143,8 +151,10 @@ def editar_medicao(mid: str, dados: EdicaoMedicao, s: Session = Depends(sessao),
     if m is None:
         raise HTTPException(404, "Medição não encontrada.")
     campos = dados.model_dump(exclude_unset=True)
-    if campos.get("sensor_state") not in (None, *ESTAGIOS):
-        raise HTTPException(400, f"Estágio inválido (use {', '.join(ESTAGIOS)}).")
+    from fiep.protocolos import todos
+    validos = [e for p in todos().values() for e in p["estagios"]]
+    if campos.get("sensor_state") not in (None, *validos):
+        raise HTTPException(400, f"Estágio inválido (use {', '.join(validos)}).")
     if campos.get("qc_flag") not in (None, "", "PASS", "REVIEW", "FAIL"):
         raise HTTPException(400, "qc_flag inválido (PASS, REVIEW, FAIL ou vazio).")
     for k, v in campos.items():

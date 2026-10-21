@@ -138,8 +138,8 @@ export default function NovaColeta() {
         <section className="cartao">
           <h2>2 · Amostras e arquivos</h2>
           <p className="mudo pequeno" style={{ marginTop: -6 }}>
-            Cada amostra precisa dos três estágios do sensor (carbono limpo, sonda, sonda + rRNA) em cada eletrodo.
-            Estágio e réplica são lidos dos arquivos (nome e canal do potenciostato).
+            Cada eletrodo precisa das três etapas do sensor (ex.: bloqueio → mAb-NS1 → final, ou carbono → sonda → rRNA).
+            Etapa e eletrodo são lidos dos nomes dos arquivos (ex.: <span className="mono">final-E3.nox</span>).
           </p>
           <Soltar aoReceber={receberLote} titulo="Arraste a pasta do lote aqui"
                   dica="Uma subpasta por amostra — o nome da pasta vira o código (pastas contaminada/ e nao_contaminada/ já preenchem o resultado)." />

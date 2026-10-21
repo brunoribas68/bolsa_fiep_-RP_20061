@@ -3,7 +3,12 @@
 # Valores "auto" são inferidos dos dados no treino e gravados junto com o modelo.
 
 [dados]
-estagios = ["carbon_clean", "capture_probe", "capture_probe_16S_rRNA"]
+# Protocolo do biossensor (etapas no mesmo eletrodo + técnica). "auto" reconhece pelos dados:
+#   rrna16s: carbon_clean -> capture_probe -> capture_probe_16S_rRNA (DPV) — o do case
+#   ns1:     bloqueio -> mAb_NS1 -> final (SWV) — imunossensor NS1
+# Protocolos e palavras-chave dos nomes de arquivo: fiep/protocolos.py (ou [protocolos.<nome>] aqui).
+protocolo = "auto"
+estagios = ["carbon_clean", "capture_probe", "capture_probe_16S_rRNA"]   # usados se não reconhecer
 tecnica = "DPV"
 
 [qc]
