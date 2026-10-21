@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -166,7 +167,9 @@ def _servir(a):
     sys.path.insert(0, str(raiz))
     os.environ.setdefault("FIEP_MODELOS", str(Path(a.modelos).resolve()))
     if a.db:
-        os.environ["FIEP_DB"] = str(Path(a.db).resolve())
+        os.environ["FIEP_DB_URL"] = a.db
+    if not (raiz / "web" / "dist" / "index.html").exists():
+        print("Frontend ainda não compilado: cd web && npm install && npm run build (a API funciona em /docs).")
     print(f"Abra http://{a.host}:{a.porta} no navegador (Ctrl+C para parar)")
     uvicorn.run("api.app:app", host=a.host, port=a.porta, reload=False)
 
@@ -198,10 +201,58 @@ def _planilha(a):
     print("Depois:\n  fiep db importar --entrada dados\n  fiep experimento --artigo")
 
 
+def _usuario(a):
+    import getpass
+
+    from . import db, usuarios
+    from .orm import Usuario
+    # conta é coisa da plataforma: banco novo já vem com os dados de exemplo (FIEP_DADOS_EXEMPLO=0 para não)
+    s = db.conectar(a.db, dados_exemplo=os.environ.get("FIEP_DADOS_EXEMPLO", "1") == "1")
+    if a.acao == "listar":
+        for u in s.query(Usuario).order_by(Usuario.email):
+            print(f"{u.email:35s} {u.nome:25s} {u.papel:12s} {'ativo' if u.ativo else 'DESATIVADO'}")
+        return
+    if not a.email:
+        raise ValueError("informe --email")
+    senha = None
+    if a.acao in ("criar", "senha"):
+        senha = os.environ.get("FIEP_SENHA_NOVA") or getpass.getpass("Senha: ")
+        if not os.environ.get("FIEP_SENHA_NOVA") and getpass.getpass("Repita a senha: ") != senha:
+            raise ValueError("as senhas não conferem")
+    if a.acao == "criar":
+        u = usuarios.criar(s, a.email, a.nome or a.email.split("@")[0], senha, a.papel, a.instituicao)
+        print(f"Usuário {u.email} criado ({u.papel}).")
+        return
+    u = usuarios.por_email(s, a.email)
+    if u is None:
+        raise ValueError(f"usuário {a.email} não encontrado")
+    if a.acao == "senha":
+        usuarios.trocar_senha(s, u, senha)
+        u.ativo = True
+        s.commit()
+        print(f"Senha de {u.email} redefinida.")
+    elif a.acao == "desativar":
+        u.ativo, u.versao_sessao = False, u.versao_sessao + 1
+        s.commit()
+        print(f"{u.email} desativado.")
+
+
 def _db(a):
-    import pandas as pd
     from . import db
+    if a.acao == "migrar":
+        con = db.conectar(a.db, dados_exemplo=not a.sem_exemplo)
+        print("Banco atualizado (migrations aplicadas).")
+        print(db.resumo(con).to_string(index=False))
+        return
     con = db.conectar(a.db)
+    if a.acao == "exemplo":
+        if a.remover:
+            print("Dados de exemplo removidos." if db.remover_exemplo(con) else "Não há dados de exemplo no banco.")
+        else:
+            r = db.carregar_exemplo(con)
+            print(f"Dados de exemplo carregados: {r['amostras']} amostras, {r['medicoes']} medições." if r
+                  else "Os dados de exemplo já estão no banco.")
+        return
     if a.acao == "importar":
         if not a.entrada:
             raise ValueError("informe a pasta com --entrada")
@@ -228,7 +279,7 @@ def _db(a):
         for conjunto, pasta, excluir in partes:
             ds = ingerir(pasta, excluir=excluir)
             ds.medicoes["conjunto"] = conjunto
-            r = db.importar(con, ds, origem=str(pasta))
+            r = db.importar(con, ds, origem=str(pasta), conjunto=conjunto, empresa=a.empresa)
             n_qc = db.gravar_qc(con, avaliar(ds.medicoes, ds.pontos, load_config(a.config)))
             print(f"Importação #{r['importacao_id']} ({pasta}, conjunto: {conjunto or 'a sortear'}): "
                   f"{r['medicoes']} medições, {r['pontos']:,} pontos, {r['amostras']} amostras, "
@@ -247,7 +298,7 @@ def _db(a):
     elif a.acao == "sql":
         if not a.consulta:
             raise ValueError('informe a consulta, ex.: fiep db sql "SELECT * FROM v_replicatas LIMIT 5"')
-        df = pd.read_sql(a.consulta, con)
+        df = db.sql(con, a.consulta)
         print(df.to_string(index=False, max_rows=60))
         if a.saida:
             df.to_csv(a.saida, index=False)
@@ -312,9 +363,9 @@ def main(argv=None):
     p.add_argument("--artigo-pasta", default="artigo/gerado")
     p.set_defaults(fn=_experimento)
 
-    p = sub.add_parser("servir", help="abre a página web e a API de previsão")
+    p = sub.add_parser("servir", help="abre a plataforma (frontend + API, com login)")
     p.add_argument("--modelos", default="modelos")
-    p.add_argument("--db", help="gravar as previsões feitas pela página neste banco")
+    p.add_argument("--db", help="arquivo SQLite ou URL do banco (padrão: FIEP_DB_URL ou dados/fiep.db)")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--porta", type=int, default=8000)
     p.set_defaults(fn=_servir)
@@ -330,10 +381,22 @@ def main(argv=None):
     p.add_argument("--refazer", action="store_true", help="converte de novo mesmo se o Excel já existir")
     p.set_defaults(fn=_excel)
 
-    p = sub.add_parser("db", help="banco de dados SQLite: importar, resumo, exportar, sql")
-    p.add_argument("acao", choices=["importar", "resumo", "exportar", "sql"])
+    p = sub.add_parser("usuario", help="contas da plataforma: criar, listar, senha, desativar")
+    p.add_argument("acao", choices=["criar", "listar", "senha", "desativar"])
+    p.add_argument("--email")
+    p.add_argument("--nome")
+    p.add_argument("--papel", choices=["admin", "colaborador", "leitor"], default="colaborador")
+    p.add_argument("--instituicao")
+    p.add_argument("--db", help="arquivo SQLite ou URL do banco (padrão: FIEP_DB_URL ou dados/fiep.db)")
+    p.set_defaults(fn=_usuario)
+
+    p = sub.add_parser("db", help="banco de dados: migrar, importar, resumo, exportar, sql, exemplo")
+    p.add_argument("acao", choices=["migrar", "importar", "resumo", "exportar", "sql", "exemplo"])
     p.add_argument("consulta", nargs="?", help="consulta SQL (para a ação sql)")
-    p.add_argument("--db", default="dados/fiep.db")
+    p.add_argument("--db", help="arquivo SQLite ou URL do banco (padrão: FIEP_DB_URL ou dados/fiep.db)")
+    p.add_argument("--sem-exemplo", action="store_true", help="migrar: não carregar os dados de exemplo")
+    p.add_argument("--remover", action="store_true", help="exemplo: apagar os dados de exemplo")
+    p.add_argument("--empresa", help="importar: nome da empresa dos dados")
     p.add_argument("--entrada", help="pasta com .nox/tabelas (para importar); com dados/, as subpastas "
                                      "treino/validacao/teste são gravadas com o seu conjunto")
     p.add_argument("--sem-excel", action="store_true", help="não gerar a cópia em Excel dos .nox (dados/excel/)")

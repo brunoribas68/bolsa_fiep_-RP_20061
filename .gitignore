@@ -54,3 +54,7 @@ artigo/*.fls
 artigo/*.fdb_latexmk
 artigo/*.synctex.gz
 artigo/*.pdf
+
+# Frontend
+web/node_modules/
+web/dist/
