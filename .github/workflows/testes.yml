@@ -32,3 +32,17 @@ jobs:
         with:
           name: artigo-pdf
           path: artigo/main.pdf
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm run build          # checagem de tipos (tsc) + build
+        working-directory: web

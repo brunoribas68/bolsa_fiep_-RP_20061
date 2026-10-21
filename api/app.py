@@ -1,186 +1,108 @@
-"""API e página web da pipeline FIEP.
+"""Plataforma FIEP: API (FastAPI) + frontend React (web/), com login.
 
-Rodar:
-    fiep servir                          # http://127.0.0.1:8000
-    uvicorn api.app:app --reload         # alternativa, da raiz do repositório
+Rodar (da raiz do repositório):
+    fiep servir                              # http://127.0.0.1:8000 (serve também o frontend compilado)
+    uvicorn api.app:app --reload             # alternativa
+    cd web && npm run dev                    # frontend em modo desenvolvimento (proxy para a API)
 
-Variáveis de ambiente:
-    FIEP_MODELOS  pasta de modelos (padrão: modelos) — usa o modelo em modelos/ATUAL
-    FIEP_DB       se definida, as previsões são gravadas neste banco SQLite
-
-Rotas:
-    GET  /                  página de upload
-    GET  /api/saude         status e modelo carregado
-    GET  /api/modelo        cartão do modelo (métricas, limiar, commit, variante)
-    POST /api/prever        arquivos .nox + planilha (ou tabelas) -> previsões
-    POST /api/planilha      arquivos .nox -> planilha de metadados pré-preenchida (CSV)
-    GET  /docs              documentação interativa (Swagger)
+Primeiro acesso: crie um admin com `fiep usuario criar --email voce@... --papel admin`
+(ou FIEP_ADMIN_EMAIL/FIEP_ADMIN_SENHA no primeiro start). Configuração: api/config.py.
+Documentação interativa: /docs.
 """
 from __future__ import annotations
 
-import os
-import shutil
-import tempfile
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import func, select
 
-from fiep import __version__
-from fiep.ingest import ingerir
-from fiep.model import carregar
-from fiep.config import load_config
-from fiep.predict import prever, resumo_por_amostra
+from fiep import __version__, usuarios
+from fiep.orm import Usuario, fabrica_sessoes, migrar
 
-ESTATICO = Path(__file__).parent / "static"
-EXTENSOES = {".nox", ".csv", ".xlsx", ".xls", ".txt"}
-MAX_ARQUIVOS = 300
-MAX_BYTES = 50 * 1024 * 1024
+from .config import Config
+from .modelo import ModeloAtual
+from .rotas import amostras, auth, coletas, empresas, painel, previsao
+from .rotas import usuarios as rotas_usuarios
+from .seguranca import CABECALHO_CSRF, LimiteTentativas
 
-app = FastAPI(title="FIEP — detecção de contaminação por voltametria", version=__version__,
-              description="Recebe voltamogramas (.nox do NOVA ou tabelas) e devolve a classificação "
-                          "contaminada / não contaminada e a carga estimada, com o controle de qualidade.")
-
-_estado: dict = {"pacote": None, "erro": None, "pasta": None}
+log = logging.getLogger("fiep.api")
+WEB = Path(__file__).resolve().parent.parent / "web" / "dist"
+METODOS_SEGUROS = {"GET", "HEAD", "OPTIONS"}
 
 
-def _pasta_modelos() -> str:
-    return os.environ.get("FIEP_MODELOS", "modelos")
+def _primeiro_admin(cfg: Config, sessoes) -> None:
+    import os
+    with sessoes() as s:
+        if s.scalar(select(func.count()).select_from(Usuario)):
+            return
+        email, senha = os.environ.get("FIEP_ADMIN_EMAIL"), os.environ.get("FIEP_ADMIN_SENHA")
+        if email and senha:
+            usuarios.criar(s, email, "Administrador", senha, "admin")
+            log.warning("Admin inicial %s criado a partir de FIEP_ADMIN_EMAIL.", email)
+        else:
+            log.warning("Nenhum usuário cadastrado: crie um admin com "
+                        "`fiep usuario criar --email voce@exemplo.org --papel admin`.")
 
 
-def pacote() -> dict:
-    """Carrega (uma vez) o modelo atual; recarrega se ATUAL mudar."""
-    pasta = _pasta_modelos()
-    atual = Path(pasta) / "ATUAL"
-    marca = atual.read_text().strip() if atual.exists() else None
-    if _estado["pacote"] is None or _estado["pasta"] != (pasta, marca):
-        try:
-            _estado["pacote"] = carregar(pasta)
-            _estado["erro"] = None
-        except Exception as e:  # noqa: BLE001
-            _estado["pacote"], _estado["erro"] = None, f"Nenhum modelo em '{pasta}': rode `fiep experimento` ou `fiep treinar`. ({e})"
-        _estado["pasta"] = (pasta, marca)
-    if _estado["pacote"] is None:
-        raise HTTPException(503, _estado["erro"])
-    return _estado["pacote"]
+def criar_app(cfg: Config | None = None) -> FastAPI:
+    cfg = cfg or Config.do_ambiente()
+
+    @asynccontextmanager
+    async def ciclo(app: FastAPI):
+        migrar(cfg.db_url, dados_exemplo=cfg.dados_exemplo)
+        _primeiro_admin(cfg, app.state.sessoes)
+        yield
+
+    app = FastAPI(title="Plataforma FIEP", version=__version__, lifespan=ciclo,
+                  description="Coletas de voltamogramas, banco de amostras e previsão de contaminação.")
+    app.state.config = cfg
+    app.state.sessoes = fabrica_sessoes(cfg.db_url)
+    app.state.limite = LimiteTentativas()
+    app.state.modelo = ModeloAtual(cfg.modelos, cfg.config_pipeline)
+
+    @app.middleware("http")
+    async def protecoes(request: Request, call_next):
+        # CSRF: alterações na API só com o cabeçalho que formulários de outros sites não conseguem mandar
+        if request.url.path.startswith("/api/") and request.method not in METODOS_SEGUROS:
+            nome, valor = CABECALHO_CSRF
+            if request.headers.get(nome, "").lower() != valor:
+                return JSONResponse({"detail": "Requisição recusada (cabeçalho de proteção ausente)."}, 403)
+        resp = await call_next(request)
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("Referrer-Policy", "same-origin")
+        if not request.url.path.startswith(("/docs", "/redoc", "/openapi")):
+            resp.headers.setdefault("Content-Security-Policy",
+                                    "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+                                    "font-src 'self' data:; script-src 'self'; frame-ancestors 'none'")
+        if request.url.path.startswith("/api/"):
+            resp.headers.setdefault("Cache-Control", "no-store")
+        return resp
+
+    for m in (auth, rotas_usuarios, empresas, coletas, amostras, previsao, painel):
+        app.include_router(m.r)
+
+    if WEB.exists():
+        app.mount("/assets", StaticFiles(directory=WEB / "assets"), name="assets")
+
+        @app.get("/{caminho:path}", include_in_schema=False)
+        def spa(caminho: str):
+            if caminho.startswith("api/"):
+                return JSONResponse({"detail": "Rota não encontrada."}, 404)
+            arq = (WEB / caminho).resolve()
+            if caminho and arq.is_file() and str(arq).startswith(str(WEB)):
+                return FileResponse(arq)
+            return FileResponse(WEB / "index.html")
+    else:
+        @app.get("/", include_in_schema=False)
+        def sem_frontend():
+            return JSONResponse({"detail": "Frontend não compilado: rode `cd web && npm install && npm run build`. "
+                                           "A API está em /docs."})
+    return app
 
 
-def _limpo(v):
-    if isinstance(v, (np.floating, float)):
-        return None if not np.isfinite(v) else float(v)
-    if isinstance(v, (np.integer,)):
-        return int(v)
-    if v is pd.NA or (not isinstance(v, (str, list, dict)) and pd.isna(v)):
-        return None
-    return v
-
-
-async def _salvar_uploads(arquivos: list[UploadFile], destino: Path) -> list[str]:
-    destino.mkdir(parents=True, exist_ok=True)
-    if not arquivos:
-        raise HTTPException(400, "Envie pelo menos um arquivo.")
-    if len(arquivos) > MAX_ARQUIVOS:
-        raise HTTPException(400, f"No máximo {MAX_ARQUIVOS} arquivos por envio.")
-    nomes = []
-    for up in arquivos:
-        nome = Path(up.filename or "").name
-        if Path(nome).suffix.lower() not in EXTENSOES:
-            raise HTTPException(400, f"Tipo de arquivo não aceito: {nome}. Envie .nox, .csv ou .xlsx.")
-        conteudo = await up.read()
-        if len(conteudo) > MAX_BYTES:
-            raise HTTPException(400, f"{nome} passa de 50 MB.")
-        (destino / nome).write_bytes(conteudo)
-        nomes.append(nome)
-    return nomes
-
-
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
-def pagina():
-    return FileResponse(ESTATICO / "index.html")
-
-
-@app.get("/api/saude")
-def saude():
-    try:
-        p = pacote()
-        return {"status": "ok", "versao": __version__, "modelo": p["cartao"]["id"]}
-    except HTTPException as e:
-        return {"status": "sem_modelo", "versao": __version__, "detalhe": e.detail}
-
-
-@app.get("/api/modelo")
-def modelo():
-    c = pacote()["cartao"]
-    return {k: _limpo(v) if not isinstance(v, dict) else {kk: _limpo(vv) for kk, vv in v.items()}
-            for k, v in c.items()}
-
-
-@app.post("/api/prever")
-async def api_prever(arquivos: list[UploadFile] = File(..., description=".nox + planilha de metadados, ou tabelas")):
-    p = pacote()
-    tmp = Path(tempfile.mkdtemp(prefix="fiep_"))
-    try:
-        # sem planilha, os arquivos de um envio formam uma amostra (separada por dia de medição)
-        await _salvar_uploads(arquivos, tmp / "envio")
-        try:
-            ds = ingerir(tmp, cfg=p["cfg"])
-        except FileNotFoundError as e:
-            raise HTTPException(400, str(e)) from e
-        cfg_arq = os.environ.get("FIEP_CONFIG", "configs/default.toml")
-        niveis = load_config(cfg_arq if Path(cfg_arq).exists() else None).get("niveis")
-        res = prever(ds, p, niveis=niveis)
-        am = resumo_por_amostra(res)
-        avisos = ds.relatorio.loc[ds.relatorio["tipo"] == "aviso", "detalhe"].astype(str).tolist()
-        if os.environ.get("FIEP_DB") and len(res):
-            from fiep import db
-            con = db.conectar(os.environ["FIEP_DB"])
-            db.importar(con, ds, origem="api")
-            db.gravar_predicoes(con, res, p["cartao"], _pasta_modelos())
-            con.close()
-        linhas = [{k: _limpo(v) for k, v in r.items()} for r in res.to_dict(orient="records")]
-        resumo = res["resultado"].value_counts().to_dict() if len(res) else {}
-        amostras = [{k: _limpo(v) for k, v in r.items()} for r in am.to_dict(orient="records")]
-        return {"modelo": p["cartao"]["id"], "algoritmo": p["cartao"]["modelo"], "resumo": resumo,
-                "amostras": amostras, "resultados": linhas, "avisos": avisos}
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-
-
-@app.post("/api/excel")
-async def api_excel(arquivos: list[UploadFile] = File(..., description="arquivos .nox")):
-    """Converte os .nox enviados para Excel (formato do NOVA) e devolve um .zip."""
-    import io
-    import zipfile
-
-    from fiep.excel import converter_pasta
-    tmp = Path(tempfile.mkdtemp(prefix="fiep_"))
-    try:
-        nomes = await _salvar_uploads(arquivos, tmp / "envio")
-        if not any(n.lower().endswith(".nox") for n in nomes):
-            raise HTTPException(400, "Envie arquivos .nox para converter.")
-        gerados = converter_pasta(tmp / "envio", tmp / "excel")
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-            for g in gerados:
-                z.write(g, g.relative_to(tmp / "excel").as_posix())
-        return Response(buf.getvalue(), media_type="application/zip",
-                        headers={"Content-Disposition": 'attachment; filename="voltamogramas_excel.zip"'})
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-
-
-@app.post("/api/planilha")
-async def api_planilha(arquivos: list[UploadFile] = File(..., description="arquivos .nox")):
-    from fiep.planilha import gerar_planilha
-    tmp = Path(tempfile.mkdtemp(prefix="fiep_"))
-    try:
-        nomes = await _salvar_uploads(arquivos, tmp / "envio")
-        if not any(n.lower().endswith(".nox") for n in nomes):
-            raise HTTPException(400, "Envie arquivos .nox para gerar a planilha.")
-        destino, _ = gerar_planilha(tmp / "envio")
-        return Response(destino.read_bytes(), media_type="text/csv; charset=utf-8",
-                        headers={"Content-Disposition": 'attachment; filename="metadados_nox.csv"'})
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+app = criar_app()

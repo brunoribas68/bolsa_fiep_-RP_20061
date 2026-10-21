@@ -26,6 +26,21 @@ pytest -q
 
 Requer Python 3.11 ou mais recente.
 
+## Plataforma web (login)
+
+Os colaboradores enviam as coletas das empresas pelo navegador: login e senha, perfis
+(admin/colaborador/leitor), envio de `.nox`/Excel por amostra com o resultado do plaqueamento,
+banco de amostras com os voltamogramas, edição de rótulos e previsão pelo modelo.
+
+```bash
+cd web && npm install && npm run build && cd ..
+fiep usuario criar --email voce@exemplo.org --nome "Seu Nome" --papel admin
+fiep servir                                    # http://127.0.0.1:8000
+```
+
+Detalhes e segurança: [`docs/PLATAFORMA.md`](docs/PLATAFORMA.md). Banco (ORM + migrations, já com
+os dados de exemplo): [`docs/BANCO.md`](docs/BANCO.md).
+
 ## Fluxo de trabalho
 
 ```bash
@@ -82,10 +97,14 @@ fiep/                pacote da pipeline
   experimentos.py      protocolo: escolha na validação, avaliação única no teste
   figuras.py           figuras e tabelas para o notebook e o artigo
   model.py, predict.py treino, registro do modelo e previsão
-  db.py                banco de dados SQLite
+  orm/                 modelo do banco (SQLAlchemy), separado por domínio
+  migracoes/           migrations (Alembic), inclusive os dados de exemplo
+  db.py                funções do banco usadas pela pipeline e pela API
+  usuarios.py          contas (bcrypt)
   cli.py               comando `fiep`
 notebook/            entrega 1
-api/                 entrega 2 (FastAPI + página, Dockerfile)
+api/                 entrega 2: backend FastAPI (login, coletas, amostras, previsão; Dockerfile)
+web/                 entrega 2: frontend React (Vite + TypeScript)
 artigo/              entrega 3 (LaTeX; artigo/gerado/ vem de `fiep experimento --artigo`)
 dados/               seus dados (soltos e/ou treino/ validacao/ teste/, fora do Git) + exemplo_case/
 configs/default.toml todos os parâmetros

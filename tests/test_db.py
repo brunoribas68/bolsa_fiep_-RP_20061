@@ -19,7 +19,7 @@ def banco(tmp_path):
 
 
 def _contar(con, tabela):
-    return con.execute(f"SELECT COUNT(*) FROM {tabela}").fetchone()[0]
+    return int(db.sql(con, f"SELECT COUNT(*) FROM {tabela}").iloc[0, 0])
 
 
 def test_importar_e_reimportar_nao_duplica(pasta_case, banco):
@@ -29,9 +29,9 @@ def test_importar_e_reimportar_nao_duplica(pasta_case, banco):
     r2 = db.importar(banco, ds, "lote 1 de novo")
     assert r2["arquivos_novos"] == 0
     assert _contar(banco, "medicoes") == len(ds.medicoes)
-    assert _contar(banco, "pontos") == len(ds.pontos)
+    assert int(db.sql(banco, "SELECT SUM(n_pontos) FROM curvas").iloc[0, 0]) == len(ds.pontos)
     assert _contar(banco, "amostras") == ds.medicoes["sample_id"].nunique()
-    assert _contar(banco, "importacoes") == 2
+    assert _contar(banco, "coletas") == 2
 
 
 def test_carregar_devolve_os_mesmos_dados(pasta_case, banco):
@@ -69,9 +69,9 @@ def test_qc_modelo_e_predicoes_ficam_registrados(pasta_case, banco, tmp_path):
     pacote = carregar(tmp_path / "m")
     res = prever(ds, pacote)
     assert db.gravar_predicoes(banco, res, pacote["cartao"]) == len(res)
-    v = pd.read_sql("SELECT * FROM v_predicoes", banco)
+    v = db.sql(banco, "SELECT * FROM v_predicoes")
     assert (v["modelo_id"] == r["cartao"]["id"]).all()
-    rep = pd.read_sql("SELECT * FROM v_replicatas", banco)
+    rep = db.sql(banco, "SELECT * FROM v_replicatas")
     assert (rep["n_aprovadas"] == 3).all()
 
 
@@ -90,3 +90,48 @@ def test_cli_db(pasta_case, tmp_path, capsys):
     assert main(["db", "sql", "SELECT COUNT(*) AS n FROM medicoes", "--db", caminho]) == 0
     assert "144" in capsys.readouterr().out
     assert main(["db", "sql", "--db", caminho]) == 1          # sem consulta: erro amigável
+
+
+def test_migrations_sobem_descem_e_batem_com_o_orm(tmp_path):
+    """O banco criado pelas migrations tem exatamente o que o modelo ORM declara."""
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+    from fiep.orm import Base, criar_engine, migrar
+    caminho = tmp_path / "m.db"
+    migrar(caminho, dados_exemplo=False)
+    with criar_engine(caminho).connect() as con:
+        diff = compare_metadata(MigrationContext.configure(con, opts={"compare_type": True}), Base.metadata)
+    assert [d for d in diff if not (d[0] == "remove_table" and str(d[1].name).startswith("v_"))] == []
+    from alembic import command
+    from alembic.config import Config
+    from pathlib import Path
+    import fiep
+    cfg = Config()
+    cfg.set_main_option("script_location", str(Path(fiep.__file__).parent / "migracoes"))
+    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{caminho}")
+    command.downgrade(cfg, "base")
+    import sqlite3
+    restantes = sqlite3.connect(caminho).execute("SELECT name FROM sqlite_master WHERE type IN ('table','view')").fetchall()
+    assert {r[0] for r in restantes} <= {"alembic_version"}
+
+
+def test_dados_de_exemplo_carregam_e_saem(tmp_path):
+    s = db.conectar(tmp_path / "ex.db", dados_exemplo=True)
+    assert _contar(s, "amostras") == 200 and _contar(s, "medicoes") == 1800
+    assert len(db.carregar(s, "tecnica = 'DPV'").medicoes) == 1800
+    assert db.remover_exemplo(s)
+    assert _contar(s, "amostras") == 0 and _contar(s, "curvas") == 0
+    assert db.carregar_exemplo(s)["amostras"] == 200
+
+
+def test_usuarios_senha_com_hash(tmp_path):
+    from fiep import usuarios
+    s = db.conectar(tmp_path / "u.db")
+    u = usuarios.criar(s, "Ana@Fiep.org", "Ana", "senha-boa-123", "admin")
+    assert u.email == "ana@fiep.org" and u.senha_hash.startswith("$2")
+    assert usuarios.confere_senha("senha-boa-123", u.senha_hash)
+    assert not usuarios.confere_senha("errada-errada", u.senha_hash)
+    with pytest.raises(ValueError, match="pelo menos"):
+        usuarios.criar(s, "b@fiep.org", "B", "curta")
+    with pytest.raises(ValueError, match="Já existe"):
+        usuarios.criar(s, "ana@fiep.org", "Ana 2", "outra-senha-boa")

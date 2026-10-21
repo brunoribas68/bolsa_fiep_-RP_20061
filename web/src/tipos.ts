@@ -1,0 +1,69 @@
+export type Papel = "admin" | "colaborador" | "leitor";
+
+export interface Usuario {
+  id: number; email: string; nome: string; papel: Papel; instituicao: string | null;
+  ativo: boolean; ultimo_login: string | null; criado_em: string | null;
+}
+
+export interface Empresa {
+  id: number; nome: string; cidade: string | null; segmento: string | null; observacoes: string | null;
+  n_coletas: number; n_amostras: number;
+}
+
+export interface Coleta {
+  id: number; empresa_id: number | null; empresa: string | null; descricao: string | null;
+  data_coleta: string | null; conjunto: string | null; n_amostras: number; n_medicoes: number;
+  amostras_sem_rotulo: number; avisos: string[]; origem: string | null; criado_por: string | null; criado_em: string;
+  arquivos?: { arquivo: string; papel: string; tamanho_bytes: number | null; sha256: string }[];
+  replicas?: { sample_id: string; replicate_id: string; n_medicoes: number; estagios: string; n_aprovadas: number }[];
+}
+
+export interface AmostraLinha {
+  sample_id: string; empresa_id: number | null; empresa: string | null; coleta_id: number | null;
+  contamination_status: number | null; sample_log10_mean_cfu_ml: number | null; target_bacterium: string | null;
+  surface_type: string | null; conjunto: string | null; n_replicas: number; n_completas: number;
+  n_medicoes: number; ultima_previsao: string | null;
+}
+
+export interface Medicao {
+  measurement_id: string; replicate_id: string | null; sensor_state: string | null; tecnica: string | null;
+  fonte: string | null; arquivo_origem: string | null; measurement_date: string | null; qc_planilha: string | null;
+  qc_auto: string | null; qc_final: string | null; qc_motivos: string | null; n_pontos: number | null;
+}
+
+export interface AmostraDetalhe {
+  sample_id: string; empresa_id: number | null; empresa: string | null; coleta_id: number | null;
+  contamination_status: number | null; sample_log10_mean_cfu_ml: number | null; target_bacterium: string | null;
+  surface_type: string | null; conjunto: string | null; observacoes: string | null; atualizado_em: string | null;
+  atualizado_por: string | null; medicoes: Medicao[];
+  plaqueamentos: { replica: number; colonias: number | null; ufc_ml: number | null; log10_ufc_ml: number | null }[];
+  previsoes: { previsto_em: string; modelo_id: string; replica: string | null; status: string; resultado: string;
+               prob_contaminada: number | null; log10_ufc_ml_estimado: number | null; nivel: string | null;
+               motivo: string | null }[];
+}
+
+export interface Curva {
+  measurement_id: string; replicate_id: string | null; sensor_state: string | null; tecnica: string | null;
+  qc_final: string | null; potential_v: number[]; current_ua: number[];
+}
+
+export interface PrevisaoAmostra {
+  sample_id: string; resultado: string; prob_contaminada: number | null; replicas_avaliadas: number;
+  replicas_total: number; concordancia: number | null; log10_ufc_ml_estimado: number | null;
+  nivel_contaminacao: string; rotulo_informado: number | null;
+}
+
+export interface PrevisaoReplica {
+  sample_id: string | null; replicate_id: string | null; measurement_id: string | null; status: string;
+  resultado: string; prob_contaminada: number | null; log10_ufc_ml_estimado: number | null;
+  nivel_contaminacao?: string; motivo: string | null;
+}
+
+export const ESTAGIOS = ["carbon_clean", "capture_probe", "capture_probe_16S_rRNA"] as const;
+export const NOME_ESTAGIO: Record<string, string> = {
+  carbon_clean: "Carbono limpo", capture_probe: "Sonda de captura", capture_probe_16S_rRNA: "Sonda + rRNA 16S",
+};
+export const NOME_CONJUNTO: Record<string, string> = {
+  "": "Sorteio (50/25/25)", treino: "Treino", validacao: "Validação", teste: "Teste",
+};
+export const NOME_PAPEL: Record<Papel, string> = { admin: "Administrador", colaborador: "Colaborador", leitor: "Leitor" };

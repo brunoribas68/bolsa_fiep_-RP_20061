@@ -1,232 +1,73 @@
-"""Banco de dados do projeto (SQLite).
+"""Banco de dados do projeto, sobre o modelo ORM (`fiep/orm/`) e as migrations (`fiep/migracoes/`).
 
-Um único arquivo (padrão: `dados/fiep.db`) com tudo rastreável:
+Funções usadas pela pipeline, pela linha de comando e pela API:
 
-    arquivos      cada arquivo importado (nome, papel, sha256) — reimportar o mesmo arquivo não duplica
-    importacoes   cada execução de importação (quando, de onde, quanto entrou)
-    amostras      1 linha por amostra (bactéria, rótulo, carga de referência)
-    plaqueamentos 1 linha por placa (referência microbiológica bruta)
-    medicoes      1 linha por voltamograma (amostra, réplica, estágio do sensor, técnica, lote...)
-    pontos        1 linha por ponto do voltamograma
-    qc            resultado do controle de qualidade por medição (histórico por versão da pipeline)
-    modelos       cada modelo treinado (métricas, limiar, commit, impressão digital dos dados)
-    predicoes     cada previsão feita, ligada ao modelo que a gerou
+    s = conectar("dados/fiep.db")        # aplica as migrations e abre uma sessão (SQLite ou FIEP_DB_URL)
+    importar(s, ds, ...)                 # grava um Dataset (reimportar atualiza, não duplica)
+    carregar(s, "tecnica = 'DPV'")       # lê de volta como Dataset, para treinar ou prever
+    gravar_qc / registrar_modelo / gravar_predicoes / resumo / exportar / sql
 
-Views prontas para consulta: v_medicoes, v_replicatas, v_qc_atual, v_predicoes.
-
-Abra o arquivo no DB Browser for SQLite ou no DBeaver, ou exporte com `fiep db exportar`.
-O esquema usa SQL padrão para facilitar uma migração futura para Postgres.
+Views para consulta: v_medicoes, v_replicatas, v_qc_atual, v_predicoes.
 """
 from __future__ import annotations
 
 import datetime as dt
 import json
-import sqlite3
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sqlalchemy import delete, func, select
+from sqlalchemy.orm import Session
 
 from . import __version__
 from .ingest import Dataset
+from .orm import (Amostra, Arquivo, Coleta, Curva, Empresa, Medicao, ModeloML, Plaqueamento, Predicao,
+                  ResultadoQC, fabrica_sessoes, migrar)
 
-VERSAO_ESQUEMA = 1
+EMPRESA_EXEMPLO = "Exemplo (case sintético)"
+PASTA_EXEMPLO = Path(__file__).resolve().parent.parent / "dados" / "exemplo_case"
 
-ESQUEMA = """
-CREATE TABLE IF NOT EXISTS meta_esquema (
-    versao INTEGER NOT NULL,
-    atualizado_em TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS importacoes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    importado_em TEXT NOT NULL,
-    origem TEXT,
-    versao_pipeline TEXT,
-    n_medicoes INTEGER,
-    n_pontos INTEGER,
-    n_amostras INTEGER,
-    avisos TEXT
-);
-
-CREATE TABLE IF NOT EXISTS arquivos (
-    sha256 TEXT PRIMARY KEY,
-    arquivo TEXT NOT NULL,
-    papel TEXT NOT NULL,
-    tamanho_bytes INTEGER,
-    n_linhas INTEGER,
-    importacao_id INTEGER REFERENCES importacoes(id),
-    importado_em TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS amostras (
-    sample_id TEXT PRIMARY KEY,
-    target_bacterium TEXT,
-    contamination_status INTEGER CHECK (contamination_status IN (0, 1)),
-    sample_log10_mean_cfu_ml REAL,
-    sensor_lot TEXT,
-    extras TEXT,
-    atualizado_em TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS plaqueamentos (
-    sample_id TEXT NOT NULL REFERENCES amostras(sample_id),
-    plating_replicate_id INTEGER NOT NULL,
-    colony_count REAL,
-    dilution_exponent REAL,
-    plated_volume_ml REAL,
-    plating_qualifier TEXT,
-    calculated_cfu_ml REAL,
-    log10_cfu_ml REAL,
-    arquivo_origem TEXT,
-    extras TEXT,
-    PRIMARY KEY (sample_id, plating_replicate_id)
-);
-
-CREATE TABLE IF NOT EXISTS medicoes (
-    measurement_id TEXT PRIMARY KEY,
-    sample_id TEXT REFERENCES amostras(sample_id),
-    replicate_id INTEGER,
-    sensor_state TEXT,
-    tecnica TEXT,
-    fonte TEXT,
-    arquivo_origem TEXT,
-    contamination_status INTEGER CHECK (contamination_status IN (0, 1)),
-    qc_flag TEXT,
-    target_bacterium TEXT,
-    sensor_id TEXT,
-    sensor_lot TEXT,
-    experimental_batch TEXT,
-    surface_type TEXT,
-    operator_id TEXT,
-    measurement_date TEXT,
-    sample_log10_mean_cfu_ml REAL,
-    extras TEXT,
-    importacao_id INTEGER REFERENCES importacoes(id)
-);
-CREATE INDEX IF NOT EXISTS ix_medicoes_amostra ON medicoes(sample_id, replicate_id);
-
-CREATE TABLE IF NOT EXISTS pontos (
-    measurement_id TEXT NOT NULL REFERENCES medicoes(measurement_id) ON DELETE CASCADE,
-    scan_index INTEGER NOT NULL,
-    idx INTEGER NOT NULL,
-    potential_v REAL,
-    current_ua REAL,
-    e_medido_v REAL,
-    i_bruta_ua REAL,
-    PRIMARY KEY (measurement_id, scan_index, idx)
-);
-
-CREATE TABLE IF NOT EXISTS qc (
-    measurement_id TEXT NOT NULL REFERENCES medicoes(measurement_id) ON DELETE CASCADE,
-    versao_pipeline TEXT NOT NULL,
-    avaliado_em TEXT NOT NULL,
-    qc_auto TEXT,
-    qc_planilha TEXT,
-    qc_final TEXT,
-    qc_motivos TEXT,
-    i_max_ua REAL,
-    PRIMARY KEY (measurement_id, versao_pipeline)
-);
-
-CREATE TABLE IF NOT EXISTS modelos (
-    id TEXT PRIMARY KEY,
-    criado_em TEXT NOT NULL,
-    algoritmo TEXT,
-    versao_pipeline TEXT,
-    commit_codigo TEXT,
-    limiar REAL,
-    balanced_accuracy REAL,
-    sensibilidade REAL,
-    especificidade REAL,
-    roc_auc REAL,
-    n_amostras INTEGER,
-    impressao_dados TEXT,
-    caminho TEXT,
-    cartao TEXT
-);
-
-CREATE TABLE IF NOT EXISTS predicoes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    modelo_id TEXT NOT NULL REFERENCES modelos(id),
-    previsto_em TEXT NOT NULL,
-    sample_id TEXT,
-    replicate_id INTEGER,
-    measurement_id TEXT,
-    status TEXT,
-    resultado TEXT,
-    prob_contaminada REAL,
-    confianca REAL,
-    motivo TEXT,
-    rotulo_informado INTEGER
-);
-
-CREATE VIEW IF NOT EXISTS v_qc_atual AS
-    SELECT q.* FROM qc q
-    WHERE q.avaliado_em = (SELECT MAX(q2.avaliado_em) FROM qc q2 WHERE q2.measurement_id = q.measurement_id);
-
-CREATE VIEW IF NOT EXISTS v_medicoes AS
-    SELECT m.measurement_id, m.sample_id, m.replicate_id, m.sensor_state, m.tecnica, m.fonte,
-           m.arquivo_origem, COALESCE(m.contamination_status, a.contamination_status) AS contamination_status,
-           a.target_bacterium, m.sensor_lot, m.experimental_batch, m.surface_type, m.measurement_date,
-           m.qc_flag AS qc_planilha, q.qc_auto, q.qc_final, q.qc_motivos,
-           (SELECT COUNT(*) FROM pontos p WHERE p.measurement_id = m.measurement_id) AS n_pontos
-    FROM medicoes m
-    LEFT JOIN amostras a ON a.sample_id = m.sample_id
-    LEFT JOIN v_qc_atual q ON q.measurement_id = m.measurement_id;
-
-CREATE VIEW IF NOT EXISTS v_replicatas AS
-    SELECT sample_id, replicate_id,
-           COUNT(*) AS n_medicoes,
-           GROUP_CONCAT(sensor_state, ', ') AS estagios,
-           SUM(CASE WHEN qc_final = 'PASS' OR (qc_final IS NULL AND COALESCE(qc_planilha, 'PASS') = 'PASS')
-                    THEN 1 ELSE 0 END) AS n_aprovadas,
-           MAX(contamination_status) AS contamination_status
-    FROM v_medicoes
-    GROUP BY sample_id, replicate_id;
-
-CREATE VIEW IF NOT EXISTS v_predicoes AS
-    SELECT p.*, m.algoritmo, m.balanced_accuracy AS modelo_balanced_accuracy
-    FROM predicoes p JOIN modelos m ON m.id = p.modelo_id;
-"""
-
-COLS = {
-    "amostras": ["sample_id", "target_bacterium", "contamination_status", "sample_log10_mean_cfu_ml", "sensor_lot"],
-    "plaqueamentos": ["sample_id", "plating_replicate_id", "colony_count", "dilution_exponent", "plated_volume_ml",
-                      "plating_qualifier", "calculated_cfu_ml", "log10_cfu_ml", "arquivo_origem"],
-    "medicoes": ["measurement_id", "sample_id", "replicate_id", "sensor_state", "tecnica", "fonte", "arquivo_origem",
-                 "contamination_status", "qc_flag", "target_bacterium", "sensor_id", "sensor_lot",
-                 "experimental_batch", "surface_type", "operator_id", "measurement_date", "sample_log10_mean_cfu_ml"],
-}
-# colunas que viram campos próprios em outro lugar ou são derivadas: não vão para "extras"
-_IGNORAR_EXTRAS = {"__arquivo", "plaqueamento_ufc_ml_media", "plaqueamento_log10_ufc_ml_media",
-                   "plaqueamento_n_replicatas"}
+# colunas da medição com campo próprio; o resto vai para `extras` (JSON)
+CAMPOS_MEDICAO = ["sample_id", "replicate_id", "sensor_state", "tecnica", "fonte", "arquivo_origem",
+                  "contamination_status", "qc_flag", "sensor_id", "sensor_lot", "experimental_batch",
+                  "surface_type", "operator_id", "measurement_date"]
+CAMPOS_AMOSTRA = ["target_bacterium", "contamination_status", "sample_log10_mean_cfu_ml", "surface_type", "sensor_lot",
+                  "conjunto"]
+# derivadas ou já guardadas em outro lugar: não vão para extras
+_IGNORAR = {"__arquivo", "measurement_id", "target_bacterium", "sample_log10_mean_cfu_ml", "conjunto",
+            "plaqueamento_ufc_ml_media", "plaqueamento_log10_ufc_ml_media", "plaqueamento_n_replicatas"}
+CAMPOS_PLAQ = ["colony_count", "dilution_exponent", "plated_volume_ml", "plating_qualifier", "calculated_cfu_ml",
+               "log10_cfu_ml", "arquivo_origem"]
 
 
-def _agora() -> str:
-    return dt.datetime.now().isoformat(timespec="seconds")
+def _agora() -> dt.datetime:
+    return dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
 
 
 def _py(v):
-    """Converte valores numpy/pandas para tipos aceitos pelo sqlite3."""
+    """numpy/pandas -> tipos simples (None para vazio)."""
     if v is None:
-        return None
-    if isinstance(v, float) and np.isnan(v):
         return None
     if isinstance(v, (np.integer,)):
         return int(v)
-    if isinstance(v, (np.floating,)):
+    if isinstance(v, (np.floating, float)):
         return None if np.isnan(v) else float(v)
     if isinstance(v, (np.bool_,)):
         return bool(v)
-    if v is pd.NaT or (not isinstance(v, (str, bytes)) and pd.isna(v)):
-        return None
+    if isinstance(v, str):
+        return v.strip() or None
+    try:
+        if pd.isna(v):
+            return None
+    except (TypeError, ValueError):
+        pass
     return v
 
 
-def _int_ou_none(v):
+def _int(v):
     v = _py(v)
-    if v is None or v == "":
+    if v is None:
         return None
     try:
         return int(float(v))
@@ -234,224 +75,307 @@ def _int_ou_none(v):
         return None
 
 
-def conectar(caminho: str | Path = "dados/fiep.db") -> sqlite3.Connection:
-    """Abre (e cria, se preciso) o banco com o esquema atualizado."""
-    caminho = Path(caminho)
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(caminho)
-    con.execute("PRAGMA foreign_keys = ON")
-    con.execute("PRAGMA journal_mode = WAL")
-    con.executescript(ESQUEMA)
-    atual = con.execute("SELECT MAX(versao) FROM meta_esquema").fetchone()[0]
-    if atual is None:
-        con.execute("INSERT INTO meta_esquema VALUES (?, ?)", (VERSAO_ESQUEMA, _agora()))
-        con.commit()
-    elif atual > VERSAO_ESQUEMA:
-        raise RuntimeError(f"O banco usa o esquema v{atual}, mais novo que esta versão da pipeline "
-                           f"(v{VERSAO_ESQUEMA}). Atualize o pacote fiep.")
-    return con
+def _str(v):
+    v = _py(v)
+    if v is None:
+        return None
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    return str(v)
 
 
-def _linhas(df: pd.DataFrame, cols: list[str], extras_de: pd.DataFrame | None = None):
-    base = df.reindex(columns=cols)
-    extra_cols = [c for c in (extras_de if extras_de is not None else df).columns
-                  if c not in cols and c not in _IGNORAR_EXTRAS]
-    for i, (_, r) in enumerate(base.iterrows()):
-        valores = [_py(v) for v in r.tolist()]
-        ex = {c: _py(df.iloc[i][c]) for c in extra_cols if _py(df.iloc[i][c]) is not None}
-        yield valores, (json.dumps(ex, ensure_ascii=False, default=str) if ex else None)
+# ----------------------------------------------------------------------------- conexão
+
+def conectar(caminho: str | Path | None = None, dados_exemplo: bool = False) -> Session:
+    """Aplica as migrations pendentes e devolve uma sessão. Sem caminho: FIEP_DB_URL ou dados/fiep.db.
+
+    `dados_exemplo=True` carrega o case de demonstração quando o banco é criado."""
+    migrar(caminho, dados_exemplo=dados_exemplo)
+    return fabrica_sessoes(caminho)()
 
 
-def importar(con: sqlite3.Connection, ds: Dataset, origem: str = "") -> dict:
-    """Grava um Dataset no banco. Reimportar a mesma medição atualiza em vez de duplicar."""
-    agora = _agora()
-    avisos = "; ".join(ds.relatorio.loc[ds.relatorio["tipo"] == "aviso", "detalhe"].astype(str)) if len(ds.relatorio) else ""
-    with con:
-        cur = con.execute(
-            "INSERT INTO importacoes (importado_em, origem, versao_pipeline, n_medicoes, n_pontos, n_amostras, avisos)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (agora, str(origem), __version__, len(ds.medicoes), len(ds.pontos), len(ds.amostras), avisos or None))
-        imp_id = cur.lastrowid
-
-        novos_arquivos = 0
-        for _, a in ds.arquivos.iterrows() if len(ds.arquivos) else []:
-            r = con.execute("INSERT OR IGNORE INTO arquivos VALUES (?, ?, ?, ?, ?, ?, ?)",
-                            (a["sha256"], a["arquivo"], a["papel"], _py(a.get("tamanho_bytes")),
-                             _py(a.get("n_linhas")), imp_id, agora))
-            novos_arquivos += r.rowcount
-
-        # amostras: completa a partir das medições quando a tabela de amostras não tem a coluna
-        am = ds.amostras.copy() if len(ds.amostras) else pd.DataFrame(columns=["sample_id"])
-        if len(ds.medicoes) and "sample_id" in ds.medicoes:
-            faltam = set(ds.medicoes["sample_id"].dropna()) - set(am["sample_id"].dropna())
-            if faltam:
-                extra = ds.medicoes[ds.medicoes["sample_id"].isin(faltam)].drop_duplicates("sample_id")
-                am = pd.concat([am, extra.reindex(columns=COLS["amostras"])], ignore_index=True)
-        am = am.dropna(subset=["sample_id"])
-        for (sid, bact, cont, logufc, lote), ex in _linhas(am, COLS["amostras"]):
-            con.execute(
-                """INSERT INTO amostras VALUES (?, ?, ?, ?, ?, ?, ?)
-                   ON CONFLICT(sample_id) DO UPDATE SET
-                     target_bacterium = COALESCE(excluded.target_bacterium, target_bacterium),
-                     contamination_status = COALESCE(excluded.contamination_status, contamination_status),
-                     sample_log10_mean_cfu_ml = COALESCE(excluded.sample_log10_mean_cfu_ml, sample_log10_mean_cfu_ml),
-                     sensor_lot = COALESCE(excluded.sensor_lot, sensor_lot),
-                     extras = COALESCE(excluded.extras, extras),
-                     atualizado_em = excluded.atualizado_em""",
-                (str(sid), bact, _int_ou_none(cont), logufc, lote, ex, agora))
-
-        if len(ds.plaqueamento):
-            pl = ds.plaqueamento.copy()
-            # plaqueamento de amostra que ainda não tem medição: cria a amostra para manter a ligação
-            for r in pl.drop_duplicates("sample_id").itertuples():
-                con.execute("INSERT OR IGNORE INTO amostras (sample_id, target_bacterium, contamination_status, "
-                            "atualizado_em) VALUES (?, ?, ?, ?)",
-                            (str(r.sample_id), _py(getattr(r, "target_bacterium", None)),
-                             _int_ou_none(getattr(r, "contamination_status", None)), agora))
-            if "plating_replicate_id" not in pl:
-                pl["plating_replicate_id"] = pl.groupby("sample_id").cumcount() + 1
-            for valores, ex in _linhas(pl, COLS["plaqueamentos"]):
-                valores[0] = str(valores[0])
-                valores[1] = _int_ou_none(valores[1])
-                con.execute("INSERT OR REPLACE INTO plaqueamentos VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            (*valores, ex))
-
-        med = ds.medicoes
-        ids = med["measurement_id"].astype(str).tolist()
-        con.executemany("DELETE FROM pontos WHERE measurement_id = ?", [(i,) for i in ids])
-        for valores, ex in _linhas(med, COLS["medicoes"]):
-            valores[0] = str(valores[0])
-            valores[1] = None if valores[1] is None else str(valores[1])
-            valores[2] = _int_ou_none(valores[2])
-            valores[7] = _int_ou_none(valores[7])
-            con.execute(
-                f"""INSERT INTO medicoes VALUES ({",".join("?" * (len(COLS["medicoes"]) + 2))})
-                    ON CONFLICT(measurement_id) DO UPDATE SET
-                    {", ".join(f"{c} = excluded.{c}" for c in COLS["medicoes"][1:])},
-                    extras = excluded.extras, importacao_id = excluded.importacao_id""",
-                (*valores, ex, imp_id))
-
-        p = ds.pontos.copy()
-        p["measurement_id"] = p["measurement_id"].astype(str)
-        p["idx"] = p.groupby(["measurement_id", "scan_index"]).cumcount()
-        for c in ("e_medido_v", "i_bruta_ua"):
-            if c not in p:
-                p[c] = np.nan
-        p = p[["measurement_id", "scan_index", "idx", "potential_v", "current_ua", "e_medido_v", "i_bruta_ua"]]
-        p = p.astype(object).where(p.notna(), None)
-        con.executemany("INSERT INTO pontos VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        [(r[0], int(r[1]), int(r[2]), *r[3:]) for r in p.itertuples(index=False)])
-
-    return {"importacao_id": imp_id, "medicoes": len(med), "pontos": len(p), "amostras": len(am),
-            "arquivos_novos": novos_arquivos}
+def sql(s: Session, consulta: str, params: tuple | dict = ()) -> pd.DataFrame:
+    """Consulta SQL livre (ex.: nas views). Parâmetros com `?` no SQLite."""
+    res = s.connection().exec_driver_sql(consulta, params) if params else s.connection().exec_driver_sql(consulta)
+    return pd.DataFrame(res.fetchall(), columns=list(res.keys()))
 
 
-def carregar(con: sqlite3.Connection, onde: str | None = None, params: tuple = ()) -> Dataset:
-    """Lê o banco de volta como Dataset (para treinar ou prever).
+# ----------------------------------------------------------------------------- importar
 
-    `onde` é um filtro SQL opcional sobre a tabela medicoes, ex.:
-        carregar(con, "tecnica = ?", ("DPV",))
-        carregar(con, "sample_id IN (SELECT sample_id FROM amostras WHERE target_bacterium = ?)", ("Escherichia coli",))
+def _empresa(s: Session, nome: str | None) -> Empresa | None:
+    if not nome:
+        return None
+    e = s.scalar(select(Empresa).where(Empresa.nome == nome))
+    if e is None:
+        e = Empresa(nome=nome)
+        s.add(e)
+        s.flush()
+    return e
+
+
+def importar(s: Session, ds: Dataset, origem: str = "", coleta: Coleta | None = None, empresa: str | None = None,
+             conjunto: str | None = None, usuario_id: int | None = None, descricao: str | None = None,
+             caminhos: dict | None = None) -> dict:
+    """Grava um Dataset. Medições e amostras existentes são atualizadas (não duplicam); arquivos
+    já importados (mesmo SHA-256) não são registrados de novo. Cria uma Coleta se não for passada.
+
+    `conjunto` (treino/validacao/teste) fixa o conjunto das amostras desta coleta; `caminhos`
+    ({nome do arquivo: onde ficou guardado}) registra o original de cada arquivo."""
+    avisos = ds.relatorio.loc[ds.relatorio["tipo"] == "aviso", "detalhe"].astype(str).tolist() \
+        if len(ds.relatorio) else []
+    emp = _empresa(s, empresa)
+    if coleta is None:
+        coleta = Coleta(empresa_id=emp.id if emp else None, origem=str(origem) or None, conjunto=conjunto,
+                        descricao=descricao, criado_por_id=usuario_id)
+        s.add(coleta)
+    coleta.versao_pipeline = __version__
+    coleta.avisos = (coleta.avisos or []) + avisos or None
+    s.flush()
+    emp_id = coleta.empresa_id
+
+    # arquivos
+    novos = 0
+    if len(ds.arquivos):
+        shas = set(ds.arquivos["sha256"])
+        ja = set(s.scalars(select(Arquivo.sha256).where(Arquivo.sha256.in_(shas))))
+        for a in ds.arquivos.drop_duplicates("sha256").itertuples():
+            if a.sha256 in ja:
+                continue
+            s.add(Arquivo(sha256=a.sha256, arquivo=a.arquivo, papel=a.papel, tamanho_bytes=_int(a.tamanho_bytes),
+                          n_linhas=_int(a.n_linhas), coleta_id=coleta.id,
+                          caminho=(caminhos or {}).get(a.arquivo)))
+            novos += 1
+
+    med = ds.medicoes.copy()
+    med["sample_id"] = med["sample_id"].map(_str)
+    # amostras: dados da tabela de amostras + o que vier nas medições
+    am = ds.amostras.copy() if len(ds.amostras) else pd.DataFrame(columns=["sample_id"])
+    am["sample_id"] = am["sample_id"].map(_str)
+    por_med = med.dropna(subset=["sample_id"]).drop_duplicates("sample_id").set_index("sample_id")
+    ids_am = sorted(set(am["sample_id"].dropna()) | set(por_med.index))
+    am = am.dropna(subset=["sample_id"]).drop_duplicates("sample_id").set_index("sample_id")
+    existentes = {a.sample_id: a for a in s.scalars(select(Amostra).where(Amostra.sample_id.in_(ids_am)))} \
+        if ids_am else {}
+    for sid in ids_am:
+        a = existentes.get(sid) or Amostra(sample_id=sid, empresa_id=emp_id, coleta_id=coleta.id)
+        if sid not in existentes:
+            s.add(a)
+        for campo in CAMPOS_AMOSTRA:
+            v = am.at[sid, campo] if sid in am.index and campo in am else None
+            if _py(v) is None and sid in por_med.index and campo in por_med:
+                v = por_med.at[sid, campo]
+            v = _int(v) if campo == "contamination_status" else _py(v)
+            if campo == "conjunto" and conjunto:
+                v = conjunto
+            if v is not None:
+                setattr(a, campo, v)
+        if conjunto and a.conjunto is None:
+            a.conjunto = conjunto
+        ex = {k: _py(v) for k, v in am.loc[sid].items() if k not in CAMPOS_AMOSTRA and _py(v) is not None} \
+            if sid in am.index else {}
+        if ex:
+            a.extras = {**(a.extras or {}), **ex}
+        a.atualizado_por_id = usuario_id or a.atualizado_por_id
+    s.flush()
+
+    # plaqueamento
+    if len(ds.plaqueamento):
+        pl = ds.plaqueamento.copy()
+        pl["sample_id"] = pl["sample_id"].map(_str)
+        if "plating_replicate_id" not in pl:
+            pl["plating_replicate_id"] = pl.groupby("sample_id").cumcount() + 1
+        for sid in set(pl["sample_id"].dropna()) - set(ids_am):
+            s.add(Amostra(sample_id=sid, empresa_id=emp_id, coleta_id=coleta.id))
+        s.flush()
+        for _, r in pl.dropna(subset=["sample_id"]).iterrows():
+            p = s.get(Plaqueamento, (r["sample_id"], _int(r["plating_replicate_id"]))) or \
+                Plaqueamento(sample_id=r["sample_id"], plating_replicate_id=_int(r["plating_replicate_id"]))
+            s.add(p)
+            for c in CAMPOS_PLAQ:
+                if c in r:
+                    setattr(p, c, _py(r[c]))
+
+    # medições + curvas
+    mids = med["measurement_id"].map(_str).tolist()
+    exist_m = {}
+    for i in range(0, len(mids), 500):
+        exist_m.update({m.measurement_id: m for m in
+                        s.scalars(select(Medicao).where(Medicao.measurement_id.in_(mids[i:i + 500])))})
+        s.execute(delete(Curva).where(Curva.measurement_id.in_(mids[i:i + 500])))
+    extra_cols = [c for c in med.columns if c not in CAMPOS_MEDICAO and c not in _IGNORAR]
+    for mid, (_, r) in zip(mids, med.iterrows()):
+        m = exist_m.get(mid) or Medicao(measurement_id=mid)
+        if mid not in exist_m:
+            s.add(m)
+        for c in CAMPOS_MEDICAO:
+            v = r.get(c)
+            setattr(m, c, _int(v) if c == "contamination_status" else
+                    _str(v) if c in ("sample_id", "replicate_id") else _py(v))
+        ex = {c: _py(r[c]) for c in extra_cols if _py(r[c]) is not None}
+        m.extras = ex or None
+        m.coleta_id = coleta.id
+    s.flush()
+    pts = ds.pontos
+    n_pts = 0
+    for mid, g in pts.groupby(pts["measurement_id"].map(_str), sort=False):
+        def col(c, conv=float):
+            if c not in g or g[c].isna().all():
+                return None
+            return [None if pd.isna(x) else conv(x) for x in g[c]]
+        s.add(Curva(measurement_id=mid, n_pontos=len(g), potential_v=col("potential_v"),
+                    current_ua=col("current_ua"), scan_index=col("scan_index", int),
+                    e_medido_v=col("e_medido_v"), i_bruta_ua=col("i_bruta_ua")))
+        n_pts += len(g)
+    coleta.n_medicoes = (coleta.n_medicoes or 0) + len(med)
+    coleta.n_amostras = s.scalar(select(func.count()).select_from(Amostra).where(Amostra.coleta_id == coleta.id))
+    s.commit()
+    return {"importacao_id": coleta.id, "coleta_id": coleta.id, "medicoes": len(med), "pontos": n_pts,
+            "amostras": len(ids_am), "arquivos_novos": novos}
+
+
+# ----------------------------------------------------------------------------- carregar
+
+_SELECT_MEDICOES = """
+SELECT m.measurement_id, m.sample_id, m.replicate_id, m.sensor_state, m.tecnica, m.fonte, m.arquivo_origem,
+       COALESCE(m.contamination_status, a.contamination_status) AS contamination_status, m.qc_flag,
+       a.target_bacterium, m.sensor_id, COALESCE(m.sensor_lot, a.sensor_lot) AS sensor_lot,
+       m.experimental_batch, COALESCE(m.surface_type, a.surface_type) AS surface_type, m.operator_id,
+       m.measurement_date, a.sample_log10_mean_cfu_ml, a.conjunto, a.empresa_id, m.coleta_id, m.extras
+FROM medicoes m LEFT JOIN amostras a ON a.sample_id = m.sample_id"""
+
+
+def carregar(s: Session, onde: str | None = None, params: tuple = ()) -> Dataset:
+    """Lê o banco como Dataset. `onde` é um filtro SQL sobre as colunas da medição, ex.:
+        carregar(s, "tecnica = ?", ("DPV",))
+        carregar(s, "empresa_id = 2 AND conjunto IS NULL")
     """
-    filtro = f"WHERE {onde}" if onde else ""
-    med = pd.read_sql(f"SELECT * FROM medicoes {filtro}", con, params=params)
-    if "extras" in med and med["extras"].notna().any():
-        ex = pd.DataFrame([json.loads(e) if e else {} for e in med["extras"]])
-        med = pd.concat([med.drop(columns="extras"), ex.drop(columns=[c for c in ex if c in med], errors="ignore")], axis=1)
-    else:
-        med = med.drop(columns="extras", errors="ignore")
-    med = med.drop(columns="importacao_id", errors="ignore")
+    consulta = f"SELECT * FROM ({_SELECT_MEDICOES}) t" + (f" WHERE {onde}" if onde else "")
+    med = sql(s, consulta, params)
+    if "extras" in med:
+        ex = [json.loads(e) if isinstance(e, str) else (e or {}) for e in med["extras"]]
+        ex = pd.DataFrame(ex, index=med.index)
+        med = pd.concat([med.drop(columns="extras"), ex.drop(columns=[c for c in ex if c in med], errors="ignore")],
+                        axis=1)
     ids = med["measurement_id"].tolist()
-    if ids:
-        con.execute("CREATE TEMP TABLE IF NOT EXISTS _ids (measurement_id TEXT PRIMARY KEY)")
-        con.execute("DELETE FROM _ids")
-        con.executemany("INSERT INTO _ids VALUES (?)", [(i,) for i in ids])
-        pts = pd.read_sql("SELECT p.measurement_id, p.scan_index, p.potential_v, p.current_ua, p.e_medido_v, p.i_bruta_ua "
-                          "FROM pontos p JOIN _ids USING (measurement_id) ORDER BY p.measurement_id, p.scan_index, p.idx", con)
-    else:
-        pts = pd.DataFrame(columns=["measurement_id", "scan_index", "potential_v", "current_ua", "e_medido_v", "i_bruta_ua"])
-    am = pd.read_sql("SELECT * FROM amostras WHERE sample_id IN (SELECT DISTINCT sample_id FROM medicoes "
-                     f"{filtro})", con, params=params).drop(columns=["extras", "atualizado_em"], errors="ignore")
-    plaq = pd.read_sql("SELECT * FROM plaqueamentos", con).drop(columns="extras", errors="ignore")
-    rel = pd.DataFrame({"tipo": ["origem"], "item": ["banco"], "detalhe": [f"{len(med)} medições lidas do SQLite"]})
+    partes = []
+    for i in range(0, len(ids), 500):
+        for c in s.scalars(select(Curva).where(Curva.measurement_id.in_(ids[i:i + 500]))):
+            n = c.n_pontos
+            partes.append(pd.DataFrame({
+                "measurement_id": [c.measurement_id] * n,
+                "scan_index": c.scan_index or [1] * n,
+                "potential_v": c.potential_v, "current_ua": c.current_ua,
+                "e_medido_v": c.e_medido_v or [np.nan] * n, "i_bruta_ua": c.i_bruta_ua or [np.nan] * n}))
+    pts = pd.concat(partes, ignore_index=True) if partes else pd.DataFrame(
+        columns=["measurement_id", "scan_index", "potential_v", "current_ua", "e_medido_v", "i_bruta_ua"])
+    pts = pts.astype({"potential_v": float, "current_ua": float, "e_medido_v": float, "i_bruta_ua": float})
+    sids = sorted(set(med["sample_id"].dropna()))
+    am = sql(s, "SELECT sample_id, target_bacterium, contamination_status, sample_log10_mean_cfu_ml, sensor_lot, "
+                "conjunto FROM amostras") if sids else pd.DataFrame(columns=["sample_id"])
+    am = am[am["sample_id"].isin(sids)].reset_index(drop=True)
+    plaq = sql(s, "SELECT * FROM plaqueamentos").drop(columns="extras", errors="ignore")
+    plaq = plaq[plaq["sample_id"].isin(sids)].reset_index(drop=True)
+    rel = pd.DataFrame({"tipo": ["origem"], "item": ["banco"], "detalhe": [f"{len(med)} medições lidas do banco"]})
     return Dataset(med, pts, am, rel, plaqueamento=plaq)
 
 
-def gravar_qc(con: sqlite3.Connection, qc: pd.DataFrame) -> int:
+# ----------------------------------------------------------------------------- QC, modelos, previsões
+
+def gravar_qc(s: Session, qc: pd.DataFrame) -> int:
     agora = _agora()
-    linhas = [(str(r.measurement_id), __version__, agora, r.qc_auto, _py(r.qc_planilha), r.qc_final,
-               r.qc_motivos or None, _py(r.i_max_ua)) for r in qc.itertuples()]
-    with con:
-        con.executemany("INSERT OR REPLACE INTO qc VALUES (?, ?, ?, ?, ?, ?, ?, ?)", linhas)
-    return len(linhas)
+    for r in qc.itertuples():
+        q = s.get(ResultadoQC, (str(r.measurement_id), __version__)) or \
+            ResultadoQC(measurement_id=str(r.measurement_id), versao_pipeline=__version__)
+        q.avaliado_em, q.qc_auto, q.qc_planilha = agora, r.qc_auto, _py(r.qc_planilha)
+        q.qc_final, q.qc_motivos, q.i_max_ua = r.qc_final, r.qc_motivos or None, _py(r.i_max_ua)
+        s.add(q)
+    s.commit()
+    return len(qc)
 
 
-def registrar_modelo(con: sqlite3.Connection, cartao: dict, pasta: str | Path) -> None:
+def registrar_modelo(s: Session, cartao: dict, pasta: str | Path) -> ModeloML:
     m = cartao.get("metricas_cv", {})
-    with con:
-        con.execute("INSERT OR REPLACE INTO modelos VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (cartao["id"], cartao["criado_em"], cartao["modelo"], cartao.get("versao_pipeline"),
-                     cartao.get("commit"), _py(cartao.get("limiar")), _py(m.get("balanced_accuracy")),
-                     _py(m.get("sensibilidade")), _py(m.get("especificidade")), _py(m.get("roc_auc")),
-                     cartao.get("n_amostras"), cartao.get("impressao_dados"), str(pasta),
-                     json.dumps(cartao, ensure_ascii=False, default=str)))
+    mod = s.get(ModeloML, cartao["id"]) or ModeloML(id=cartao["id"])
+    mod.criado_em, mod.algoritmo = cartao.get("criado_em"), cartao.get("modelo")
+    mod.versao_pipeline, mod.commit_codigo = cartao.get("versao_pipeline"), cartao.get("commit")
+    mod.limiar, mod.balanced_accuracy = _py(cartao.get("limiar")), _py(m.get("balanced_accuracy"))
+    mod.sensibilidade, mod.especificidade = _py(m.get("sensibilidade")), _py(m.get("especificidade"))
+    mod.roc_auc, mod.n_amostras = _py(m.get("roc_auc")), _int(cartao.get("n_amostras"))
+    mod.impressao_dados, mod.caminho = cartao.get("impressao_dados"), str(pasta)
+    mod.cartao = json.loads(json.dumps(cartao, default=str))
+    s.add(mod)
+    s.commit()
+    return mod
 
 
-def gravar_predicoes(con: sqlite3.Connection, resultado: pd.DataFrame, cartao: dict, pasta_modelo="") -> int:
-    if not con.execute("SELECT 1 FROM modelos WHERE id = ?", (cartao["id"],)).fetchone():
-        registrar_modelo(con, cartao, pasta_modelo)
+def gravar_predicoes(s: Session, resultado: pd.DataFrame, cartao: dict, pasta_modelo="",
+                     usuario_id: int | None = None) -> int:
+    if s.get(ModeloML, cartao["id"]) is None:
+        registrar_modelo(s, cartao, pasta_modelo)
     agora = _agora()
-    linhas = []
-    for r in resultado.itertuples():
-        linhas.append((cartao["id"], agora, _py(getattr(r, "sample_id", None)) and str(r.sample_id),
-                       _int_ou_none(getattr(r, "replicate_id", None)), _py(getattr(r, "measurement_id", None)),
-                       r.status, r.resultado, _py(r.prob_contaminada), _py(r.confianca), _py(r.motivo) or None,
-                       _int_ou_none(getattr(r, "rotulo_informado", None))))
-    with con:
-        con.executemany("INSERT INTO predicoes (modelo_id, previsto_em, sample_id, replicate_id, measurement_id, "
-                        "status, resultado, prob_contaminada, confianca, motivo, rotulo_informado) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", linhas)
-    return len(linhas)
+    for r in resultado.to_dict(orient="records"):
+        s.add(Predicao(modelo_id=cartao["id"], previsto_em=agora, sample_id=_str(r.get("sample_id")),
+                       replicate_id=_str(r.get("replicate_id")), measurement_id=_py(r.get("measurement_id")),
+                       status=_py(r.get("status")), resultado=_py(r.get("resultado")),
+                       prob_contaminada=_py(r.get("prob_contaminada")), confianca=_py(r.get("confianca")),
+                       log10_ufc_ml_estimado=_py(r.get("log10_ufc_ml_estimado")),
+                       nivel_contaminacao=_py(r.get("nivel_contaminacao")), motivo=_py(r.get("motivo")),
+                       rotulo_informado=_int(r.get("rotulo_informado")), usuario_id=usuario_id))
+    s.commit()
+    return len(resultado)
 
 
-def resumo(con: sqlite3.Connection) -> pd.DataFrame:
+# ----------------------------------------------------------------------------- resumo e exportação
+
+def resumo(s: Session) -> pd.DataFrame:
     consultas = {
+        "empresas": "SELECT COUNT(*) FROM empresas",
+        "coletas": "SELECT COUNT(*) FROM coletas",
         "amostras": "SELECT COUNT(*) FROM amostras",
         "amostras contaminadas": "SELECT COUNT(*) FROM amostras WHERE contamination_status = 1",
+        "amostras sem rótulo": "SELECT COUNT(*) FROM amostras WHERE contamination_status IS NULL",
         "medições": "SELECT COUNT(*) FROM medicoes",
-        "pontos": "SELECT COUNT(*) FROM pontos",
+        "pontos": "SELECT COALESCE(SUM(n_pontos), 0) FROM curvas",
         "plaqueamentos": "SELECT COUNT(*) FROM plaqueamentos",
         "réplicas com os 3 estágios aprovados": "SELECT COUNT(*) FROM v_replicatas WHERE n_aprovadas >= 3",
         "medições reprovadas no QC (FAIL)": "SELECT COUNT(*) FROM v_qc_atual WHERE qc_final = 'FAIL'",
         "arquivos importados": "SELECT COUNT(*) FROM arquivos",
-        "importações": "SELECT COUNT(*) FROM importacoes",
         "modelos registrados": "SELECT COUNT(*) FROM modelos",
         "previsões": "SELECT COUNT(*) FROM predicoes",
     }
-    return pd.DataFrame([(k, con.execute(q).fetchone()[0]) for k, q in consultas.items()], columns=["item", "total"])
+    return pd.DataFrame([(k, sql(s, q).iloc[0, 0]) for k, q in consultas.items()], columns=["item", "total"])
 
 
-TABELAS_EXPORT = ["amostras", "plaqueamentos", "medicoes", "v_medicoes", "v_replicatas", "v_qc_atual",
-                  "arquivos", "importacoes", "modelos", "v_predicoes", "pontos"]
+TABELAS_EXPORT = ["empresas", "coletas", "amostras", "plaqueamentos", "medicoes", "v_medicoes", "v_replicatas",
+                  "v_qc_atual", "arquivos", "modelos", "v_predicoes"]
 LIMITE_EXCEL = 1_048_575
 
 
-def exportar(con: sqlite3.Connection, destino: str | Path, formato: str = "xlsx") -> list[Path]:
-    """Exporta tabelas e views para Excel (uma aba por tabela) ou para uma pasta de CSVs."""
+def _pontos(s: Session) -> pd.DataFrame:
+    d = carregar(s).pontos
+    return d
+
+
+def exportar(s: Session, destino: str | Path, formato: str = "xlsx") -> list[Path]:
+    """Exporta tabelas, views e os pontos das curvas para Excel (uma aba por tabela) ou CSVs."""
     destino = Path(destino)
+    tabelas = {t: sql(s, f"SELECT * FROM {t}") for t in TABELAS_EXPORT}
+    for t in ("coletas", "amostras", "medicoes", "modelos", "plaqueamentos"):
+        for c in ("avisos", "extras", "cartao"):
+            if c in tabelas[t]:
+                tabelas[t][c] = tabelas[t][c].map(lambda v: v if v is None or isinstance(v, str) else json.dumps(v))
+    tabelas["pontos"] = _pontos(s)
     gerados = []
     if formato == "csv":
         destino.mkdir(parents=True, exist_ok=True)
-        for t in TABELAS_EXPORT:
-            df = pd.read_sql(f"SELECT * FROM {t}", con)
+        for t, df in tabelas.items():
             arq = destino / (f"{t}.csv.gz" if t == "pontos" else f"{t}.csv")
             df.to_csv(arq, index=False, encoding="utf-8-sig")
             gerados.append(arq)
         return gerados
     destino.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(destino, engine="openpyxl") as w:
-        for t in TABELAS_EXPORT:
-            df = pd.read_sql(f"SELECT * FROM {t}", con)
+        for t, df in tabelas.items():
             if len(df) > LIMITE_EXCEL:
                 csv = destino.with_name(destino.stem + f"_{t}.csv.gz")
                 df.to_csv(csv, index=False, encoding="utf-8-sig")
@@ -462,3 +386,30 @@ def exportar(con: sqlite3.Connection, destino: str | Path, formato: str = "xlsx"
             df.to_excel(w, sheet_name=t[:31], index=False)
     gerados.insert(0, destino)
     return gerados
+
+
+# ----------------------------------------------------------------------------- dados de exemplo
+
+def carregar_exemplo(s: Session) -> dict | None:
+    """Carrega o case de demonstração como a empresa de exemplo (se ainda não estiver no banco)."""
+    from .ingest import ingerir
+    if s.scalar(select(Empresa).where(Empresa.nome == EMPRESA_EXEMPLO)) is not None:
+        return None
+    return importar(s, ingerir(PASTA_EXEMPLO), origem="dados/exemplo_case", empresa=EMPRESA_EXEMPLO,
+                    descricao="Conjunto de demonstração (case)")
+
+
+def remover_exemplo(s: Session) -> bool:
+    """Apaga a empresa de exemplo e tudo o que veio com ela."""
+    import importlib.util
+    emp = s.scalar(select(Empresa).where(Empresa.nome == EMPRESA_EXEMPLO))
+    if emp is None:
+        return False
+    caminho = Path(__file__).resolve().parent / "migracoes" / "versions" / "0003_dados_exemplo.py"
+    spec = importlib.util.spec_from_file_location("_m0003", caminho)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod.remover_exemplo(s.connection(), emp.id)
+    s.commit()
+    return True
+
