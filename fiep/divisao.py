@@ -117,6 +117,9 @@ def diagnosticar(ds: Dataset | None, cfg: dict | None = None) -> str:
     if ds is None or not len(ds.medicoes):
         return "Nenhuma medição foi lida (há .nox ou tabelas na pasta?)."
     m = ds.medicoes
+    if cfg:
+        from .protocolos import ajustar
+        cfg = ajustar(cfg, ds)
     estagios = list((cfg or {}).get("dados", {}).get("estagios") or
                     ["carbon_clean", "capture_probe", "capture_probe_16S_rRNA"])
     tecnica = (cfg or {}).get("dados", {}).get("tecnica", "DPV")

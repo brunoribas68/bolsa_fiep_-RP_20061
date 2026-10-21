@@ -147,6 +147,10 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
     """Roda o experimento. `dados` é uma Divisao (treino/validação/teste) ou um Dataset único,
     que então é dividido nas proporções de `[divisao]` da configuração."""
     div = dados if isinstance(dados, Divisao) else montar(dados, {}, cfg)
+    from .protocolos import ajustar
+    cfg = ajustar(cfg, div.treino)           # etapas e técnica do protocolo dos dados (gravadas no modelo)
+    log.info("Protocolo: %s (%s; etapas %s)", cfg["dados"].get("protocolo"), cfg["dados"]["tecnica"],
+             " -> ".join(cfg["dados"]["estagios"]))
     seed = cfg["modelo"]["seed"]
     n_folds = cfg["modelo"]["n_folds"]
     exp_id = dt.datetime.now().strftime("%Y%m%d-%H%M%S")

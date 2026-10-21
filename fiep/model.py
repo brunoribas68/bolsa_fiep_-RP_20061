@@ -93,6 +93,8 @@ def _impressao_dados(ds: Dataset) -> str:
 
 
 def treinar(ds: Dataset, cfg: dict, pasta_modelos: str | Path = "modelos") -> dict:
+    from .protocolos import ajustar
+    cfg = ajustar(cfg, ds)
     tabela, grade, qc = montar_tabela(ds, cfg)
     tabela = tabela.dropna(subset=["contamination_status"])
     if tabela.empty:

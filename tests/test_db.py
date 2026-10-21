@@ -135,3 +135,50 @@ def test_usuarios_senha_com_hash(tmp_path):
         usuarios.criar(s, "b@fiep.org", "B", "curta")
     with pytest.raises(ValueError, match="Já existe"):
         usuarios.criar(s, "ana@fiep.org", "Ana 2", "outra-senha-boa")
+
+
+def test_banco_antigo_e_convertido_sem_perder_dados(tmp_path):
+    """Banco criado pela versão anterior (sem migrations): vira backup e é convertido."""
+    import json
+    import sqlite3
+
+    from fiep.legado import ESQUEMA_V1
+    caminho = tmp_path / "fiep.db"
+    con = sqlite3.connect(caminho)
+    con.executescript(ESQUEMA_V1)
+    con.execute("INSERT INTO meta_esquema VALUES (1, '2026-10-20')")
+    con.execute("INSERT INTO importacoes (id, importado_em, origem) VALUES (1, '2026-10-20', 'dados')")
+    con.execute("INSERT INTO arquivos VALUES ('abc', 'x.nox', 'nox', 10, 3, 1, '2026-10-20')")
+    con.execute("INSERT INTO amostras VALUES ('A1', 'E. coli', 1, 5.5, 'L1', NULL, '2026-10-20')")
+    for k, est in enumerate(["carbon_clean", "capture_probe", "capture_probe_16S_rRNA"]):
+        mid = f"A1_{k}"
+        con.execute("INSERT INTO medicoes (measurement_id, sample_id, replicate_id, sensor_state, tecnica, fonte, "
+                    "arquivo_origem, extras, importacao_id) VALUES (?, 'A1', 1, ?, 'DPV', 'nox', 'x.nox', ?, 1)",
+                    (mid, est, json.dumps({"canal": "1"})))
+        con.executemany("INSERT INTO pontos VALUES (?, 1, ?, ?, ?, NULL, NULL)",
+                        [(mid, i, -0.2 + i * 0.01, float(i % 7)) for i in range(60)])
+        con.execute("INSERT INTO qc VALUES (?, '0.1.0', '2026-10-20', 'PASS', NULL, 'PASS', '', 7.0)", (mid,))
+    con.execute("INSERT INTO modelos (id, criado_em, algoritmo, cartao) VALUES ('m1', '2026', 'log_reg', ?)",
+                (json.dumps({"id": "m1", "modelo": "log_reg", "limiar": 0.5}),))
+    con.execute("INSERT INTO predicoes (modelo_id, previsto_em, sample_id, replicate_id, status, resultado) "
+                "VALUES ('m1', '2026', 'A1', 1, 'avaliada', 'CONTAMINADA')")
+    con.commit()
+    con.close()
+
+    s = db.conectar(caminho)                      # o que o `fiep usuario criar` faz
+    assert len(list(tmp_path.glob("fiep.antigo-*.db"))) == 1
+    assert _contar(s, "amostras") == 1 and _contar(s, "medicoes") == 3 and _contar(s, "predicoes") == 1
+    ds = db.carregar(s)
+    assert len(ds.pontos) == 180 and set(ds.medicoes["canal"]) == {"1"}
+    assert db.sql(s, "SELECT n_aprovadas FROM v_replicatas").iloc[0, 0] == 3
+    s.close()
+    db.conectar(caminho).close()                  # segunda vez: já está no formato novo, nada muda
+    assert len(list(tmp_path.glob("fiep.antigo-*.db"))) == 1
+
+
+def test_arquivo_que_nao_e_do_projeto_nao_e_tocado(tmp_path):
+    import sqlite3
+    caminho = tmp_path / "outro.db"
+    sqlite3.connect(caminho).execute("CREATE TABLE clientes (id INTEGER)").connection.commit()
+    with pytest.raises(RuntimeError, match="não é um banco da plataforma"):
+        db.conectar(caminho)

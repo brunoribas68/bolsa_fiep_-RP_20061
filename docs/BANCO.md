@@ -29,6 +29,13 @@ fiep db exemplo --remover            # tira os dados de exemplo (quando chegarem
 fiep db exemplo                      # coloca de volta
 ```
 
+### Banco da versão anterior
+
+Se `dados/fiep.db` foi criado antes do ORM (versão sem migrations), o primeiro comando que abrir o
+banco guarda uma cópia (`dados/fiep.antigo-AAAAMMDD-HHMMSS.db`), cria o banco novo e copia para ele
+amostras, medições, curvas, QC, modelos e previsões. Nesse caso os dados de exemplo não são
+carregados (para não misturar); use `fiep db exemplo` se quiser.
+
 ### Mudando o banco
 
 1. Edite os modelos em `fiep/orm/` (nova coluna, nova tabela, novo arquivo de domínio — importe-o em

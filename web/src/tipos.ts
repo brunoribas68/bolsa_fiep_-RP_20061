@@ -62,7 +62,10 @@ export interface PrevisaoReplica {
 export const ESTAGIOS = ["carbon_clean", "capture_probe", "capture_probe_16S_rRNA"] as const;
 export const NOME_ESTAGIO: Record<string, string> = {
   carbon_clean: "Carbono limpo", capture_probe: "Sonda de captura", capture_probe_16S_rRNA: "Sonda + rRNA 16S",
+  bloqueio: "Bloqueio", mAb_NS1: "mAb-NS1", final: "Final",
 };
+
+export interface Protocolo { nome: string; tecnica: string; estagios: { id: string; nome: string }[] }
 export const NOME_CONJUNTO: Record<string, string> = {
   "": "Sorteio (50/25/25)", treino: "Treino", validacao: "Validação", teste: "Teste",
 };

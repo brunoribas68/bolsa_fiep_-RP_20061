@@ -5,12 +5,10 @@ import { useAuth } from "../auth";
 import GraficoCurvas, { type Serie } from "../componentes/GraficoCurvas";
 import { BarraProb, ChipResultado, ChipRotulo, SeloQC } from "../componentes/rotulos";
 import { data, num, pct } from "../formato";
-import { ESTAGIOS, NOME_CONJUNTO, NOME_ESTAGIO, type AmostraDetalhe as Det, type Curva, type PrevisaoAmostra, type PrevisaoReplica } from "../tipos";
+import { NOME_CONJUNTO, NOME_ESTAGIO, type AmostraDetalhe as Det, type Curva, type PrevisaoAmostra, type PrevisaoReplica, type Protocolo } from "../tipos";
 import { useCarregar } from "../usar";
 
-const COR: Record<string, string> = {
-  carbon_clean: "var(--serie-1)", capture_probe: "var(--serie-2)", capture_probe_16S_rRNA: "var(--serie-3)",
-};
+const CORES = ["var(--serie-1)", "var(--serie-2)", "var(--serie-3)"];
 
 function Edicao({ a, aoSalvar }: { a: Det; aoSalvar: (d: Det) => void }) {
   const [f, setF] = useState({
@@ -68,16 +66,27 @@ export default function AmostraDetalhe() {
   const [erroPrev, setErroPrev] = useState("");
   const [prevendo, setPrevendo] = useState(false);
 
+  const { dados: protocolos } = useCarregar<Record<string, Protocolo>>("/api/protocolos");
+  // protocolo da amostra: o que tem mais estágios em comum com as medições dela
+  const etapas = useMemo(() => {
+    const presentes = new Set((a?.medicoes || []).map(m => m.sensor_state));
+    const lista = Object.values(protocolos || {});
+    const melhor = lista.sort((x, y) => y.estagios.filter(e => presentes.has(e.id)).length
+      - x.estagios.filter(e => presentes.has(e.id)).length)[0];
+    return melhor ? melhor.estagios : [];
+  }, [protocolos, a]);
+  const ordem = etapas.map(e => e.id);
+  const nomeEst = (id: string | null) => etapas.find(e => e.id === id)?.nome || NOME_ESTAGIO[id || ""] || id || "?";
   const replicas = useMemo(() => [...new Set((curvas || []).map(c => c.replicate_id || "—"))].sort(), [curvas]);
   const atual = replica ?? replicas[0] ?? null;
   const series: Serie[] = useMemo(() => (curvas || [])
     .filter(c => (c.replicate_id || "—") === atual)
-    .sort((x, y) => ESTAGIOS.indexOf(x.sensor_state as typeof ESTAGIOS[number]) - ESTAGIOS.indexOf(y.sensor_state as typeof ESTAGIOS[number]))
+    .sort((x, y) => ordem.indexOf(x.sensor_state || "") - ordem.indexOf(y.sensor_state || ""))
     .map(c => ({
-      nome: `${NOME_ESTAGIO[c.sensor_state || ""] || c.sensor_state || "?"}${c.qc_final && c.qc_final !== "PASS" ? ` (QC ${c.qc_final})` : ""}`,
-      cor: COR[c.sensor_state || ""] || "var(--texto-3)", x: c.potential_v, y: c.current_ua,
+      nome: `${nomeEst(c.sensor_state)}${c.qc_final && c.qc_final !== "PASS" ? ` (QC ${c.qc_final})` : ""}`,
+      cor: CORES[ordem.indexOf(c.sensor_state || "")] || "var(--texto-3)", x: c.potential_v, y: c.current_ua,
       fraca: !!c.qc_final && c.qc_final !== "PASS",
-    })), [curvas, atual]);
+    })), [curvas, atual, etapas]);
 
   async function prever() {
     setErroPrev(""); setPrevendo(true);
@@ -166,8 +175,8 @@ export default function AmostraDetalhe() {
                 <td>{pode("editar") ? (
                   <select value={m.sensor_state || ""} aria-label="Estágio do sensor" onChange={e => mudarEstagio(m.measurement_id, e.target.value)}>
                     {!m.sensor_state && <option value="">— definir —</option>}
-                    {ESTAGIOS.map(s => <option key={s} value={s}>{NOME_ESTAGIO[s]}</option>)}
-                  </select>) : (NOME_ESTAGIO[m.sensor_state || ""] || "—")}</td>
+                    {etapas.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                  </select>) : nomeEst(m.sensor_state)}</td>
                 <td>{m.tecnica}</td>
                 <td><SeloQC v={m.qc_final} />{m.qc_motivos && <div className="mudo pequeno">{m.qc_motivos}</div>}</td>
                 <td className="mono">{m.arquivo_origem}</td><td className="num">{m.n_pontos}</td>

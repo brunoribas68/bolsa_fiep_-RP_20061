@@ -42,7 +42,10 @@ def avaliar(medicoes: pd.DataFrame, pontos: pd.DataFrame, cfg: dict) -> pd.DataF
             if imax > q["max_abs_corrente_ua"]:
                 motivos_fail.append(f"corrente {imax:.0f} µA acima do limite (sobrecarga)")
             if "e_medido_v" in p and p["e_medido_v"].notna().any():
-                dev = (p["potential_v"] - p["e_medido_v"]).abs()
+                # desconta o deslocamento constante: na SWV o potencial "forward" é o aplicado + a
+                # amplitude do pulso; o que indica problema é o potencial não acompanhar o aplicado
+                d = p["e_medido_v"] - p["potential_v"]
+                dev = (d - d.median()).abs()
                 frac = (dev > q["max_desvio_e_v"]).mean()
                 if frac > q["max_frac_desvio_e"]:
                     motivos_fail.append(f"potencial medido longe do aplicado em {frac:.0%} dos pontos")

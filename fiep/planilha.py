@@ -47,7 +47,9 @@ def _qc_rapido(curva: dict, cfg: dict) -> str:
         motivos.append(f"sobrecarga ({imax:.0f} µA)")
     em = curva.get("e_medido_v")
     if em:
-        dev = [abs(a - b) > q["max_desvio_e_v"] for a, b in zip(curva["potential_v"], em) if b == b]
+        difs = [b - a for a, b in zip(curva["potential_v"], em) if b == b]
+        med = sorted(difs)[len(difs) // 2] if difs else 0.0       # desconta a amplitude do pulso (SWV)
+        dev = [abs(d - med) > q["max_desvio_e_v"] for d in difs]
         if dev and sum(dev) / len(dev) > q["max_frac_desvio_e"]:
             motivos.append("potencial medido longe do aplicado")
     if len(curva["potential_v"]) < q["min_pontos"]:
@@ -119,6 +121,10 @@ def gerar_planilha(pasta: str | Path, nome: str = "metadados_nox.csv", cfg: dict
     infos.update({k: v[0] for k, v in exportados.items()})
     auto = inferir(todos, infos, cfg)
     por_rel = {r["_caminho"].relative_to(pasta).as_posix(): r for _, r in auto.iterrows()} if len(auto) else {}
+    # protocolo (etapas e técnica) reconhecido pelos estágios deduzidos
+    from .protocolos import ajustar
+    from types import SimpleNamespace
+    cfg = ajustar(cfg, SimpleNamespace(medicoes=auto.reindex(columns=["sensor_state"]) if len(auto) else None))
     for linha in novas:
         ded = por_rel.get(linha["arquivo"])
         if ded is None:
