@@ -88,9 +88,9 @@ opções:
 
 ```
 uso: fiep experimento [-h] [--dados DADOS] [--db DB] [--filtro FILTRO] [--filtro-treino FILTRO_TREINO]
-                        [--filtro-validacao FILTRO_VALIDACAO] [--filtro-teste FILTRO_TESTE] [--saida SAIDA]
-                        [--modelos MODELOS] [--rapido] [--artigo] [--artigo-pasta ARTIGO_PASTA]
-                        [--config CONFIG]
+                        [--filtro-validacao FILTRO_VALIDACAO] [--filtro-teste FILTRO_TESTE] [--com-exemplo]
+                        [--saida SAIDA] [--modelos MODELOS] [--rapido] [--artigo]
+                        [--artigo-pasta ARTIGO_PASTA] [--config CONFIG]
 
 Divide as amostras em treino/validação/teste (padrão 50/25/25, por amostra, estratificado), ajusta 5 representações x 12 modelos no treino, escolhe pela validação, re-treina com treino+validação e mede uma vez no teste. Registra o melhor em modelos/ (usado pela plataforma) e gera figuras/tabelas.
 
@@ -105,6 +105,7 @@ opções:
   --filtro-validacao FILTRO_VALIDACAO
                                   com --db: idem, para a validação
   --filtro-teste FILTRO_TESTE     com --db: idem, para o teste (ex.: outra empresa)
+  --com-exemplo                   com --db: inclui os dados de exemplo mesmo havendo dados reais
   --saida SAIDA                   pasta dos resultados (padrão: resultados)
   --modelos MODELOS               pasta onde o modelo é registrado (padrão: modelos)
   --rapido                        menos variantes e modelos (para testar)

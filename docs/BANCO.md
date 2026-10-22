@@ -26,6 +26,7 @@ Padrão: SQLite em `dados/fiep.db`. Para Postgres: `pip install -e ".[postgres]"
 fiep db migrar                       # cria/atualiza o banco (com os dados de exemplo)
 fiep db migrar --sem-exemplo         # sem os dados de exemplo
 fiep db exemplo --remover            # tira os dados de exemplo (quando chegarem os reais)
+# com dados reais no banco, `fiep experimento --db` já deixa o exemplo de fora (--com-exemplo inclui)
 fiep db exemplo                      # coloca de volta
 ```
 

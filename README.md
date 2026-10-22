@@ -77,9 +77,11 @@ fiep usuario criar --email voce@exemplo.org --nome "Seu Nome" --papel admin   # 
 fiep servir                                                                     # http://127.0.0.1:8000
 ```
 
-O banco (`dados/fiep.db`) é criado na primeira vez, já com o **case de demonstração** (200 amostras
-sintéticas da empresa "Exemplo (case sintético)"). Para treinar um modelo com ele:
-`fiep experimento --db dados/fiep.db`. Quando chegarem os dados reais: `fiep db exemplo --remover`.
+O banco (`dados/fiep.db`) é criado no primeiro uso, já com o **case de demonstração** (200 amostras
+sintéticas da empresa "Exemplo (case sintético)"; `FIEP_DADOS_EXEMPLO=0` para criar vazio). Para
+treinar um modelo com ele: `fiep experimento --db dados/fiep.db`. Quando houver dados reais no
+banco, o exemplo **fica fora do treino** automaticamente (`--com-exemplo` para incluir) e pode ser
+apagado com `fiep db exemplo --remover`.
 
 ---
 

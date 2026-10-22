@@ -95,6 +95,14 @@ def _experimento(a):
         from . import db
         con = db.conectar(a.db)
         todos = db.carregar(con, a.filtro)
+        # dados de exemplo só entram quando não há outros (demonstração)
+        ex = db.id_empresa_exemplo(con)
+        if ex is not None and "empresa_id" in todos.medicoes and (todos.medicoes["empresa_id"] != ex).any() \
+                and not a.com_exemplo:
+            reais = set(todos.medicoes.loc[todos.medicoes["empresa_id"] != ex, "sample_id"].dropna())
+            todos = subconjunto(todos, reais)
+            print(f"Dados de exemplo deixados de fora (use --com-exemplo para incluir ou "
+                  f"`fiep db exemplo --remover` para apagá-los).")
         med = todos.medicoes
         # conjunto definido na importação (pastas treino/validacao/teste) e/ou por filtro SQL
         ids = {k: set(med.loc[med["conjunto"] == k, "sample_id"]) if "conjunto" in med else set()
@@ -252,8 +260,14 @@ def _db(a):
         partes = [(None, base, RESERVADAS)] if tem_dados(base, RESERVADAS) else []
         partes += [(k, base / k, ()) for k in CONJUNTOS if tem_dados(base / k)]
         if not partes and tem_dados(base / "exemplo_case"):
-            print(f"Sem dados em {base}: importando {base / 'exemplo_case'} (demonstração).")
-            partes = [(None, base / "exemplo_case", ())]
+            if db.id_empresa_exemplo(con) is not None:
+                print(f"Sem dados em {base} além do exemplo, que já está no banco.")
+                print(db.resumo(con).to_string(index=False))
+                return
+            print(f"Sem dados em {base}: carregando o case de demonstração.")
+            r = db.carregar_exemplo(con)
+            print(f"{r['amostras']} amostras, {r['medicoes']} medições.")
+            return
         if not partes:
             raise FileNotFoundError(f"Nenhum dado em {base}")
         if a.conjunto:
@@ -389,6 +403,8 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--filtro-treino", help="com --db: filtro SQL de amostras que vão inteiras para o treino")
     p.add_argument("--filtro-validacao", help="com --db: idem, para a validação")
     p.add_argument("--filtro-teste", help="com --db: idem, para o teste (ex.: outra empresa)")
+    p.add_argument("--com-exemplo", action="store_true",
+                   help="com --db: inclui os dados de exemplo mesmo havendo dados reais")
     p.add_argument("--saida", default="resultados", help="pasta dos resultados (padrão: resultados)")
     p.add_argument("--modelos", default="modelos", help="pasta onde o modelo é registrado (padrão: modelos)")
     p.add_argument("--rapido", action="store_true", help="menos variantes e modelos (para testar)")
@@ -504,6 +520,11 @@ def _verificar(a):
     linha("ok" if cfg_arq else "aviso", "configuração", cfg_arq or "usando os valores de fábrica")
     try:
         from . import db
+        from .orm import url_banco
+        url = url_banco(a.db)
+        if url.startswith("sqlite:///") and not Path(url[len("sqlite:///"):]).exists():
+            linha("aviso", "banco", f"ainda não criado ({url}); é criado no primeiro uso, com os dados de exemplo")
+            raise LookupError
         s = db.conectar(a.db)
         r = db.resumo(s).set_index("item")["total"]
         from .orm import url_banco
@@ -512,6 +533,8 @@ def _verificar(a):
         if not int(db.sql(s, "SELECT COUNT(*) FROM usuarios WHERE papel = 'admin' AND ativo").iloc[0, 0]):
             linha("aviso", "nenhum admin", "fiep usuario criar --email voce@... --papel admin")
         s.close()
+    except LookupError:
+        pass
     except Exception as e:  # noqa: BLE001
         linha("ERRO", "banco", str(e).splitlines()[0])
     try:

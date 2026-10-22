@@ -86,10 +86,15 @@ def _str(v):
 
 # ----------------------------------------------------------------------------- conexão
 
-def conectar(caminho: str | Path | None = None, dados_exemplo: bool = False) -> Session:
+def conectar(caminho: str | Path | None = None, dados_exemplo: bool | None = None) -> Session:
     """Aplica as migrations pendentes e devolve uma sessão. Sem caminho: FIEP_DB_URL ou dados/fiep.db.
 
-    `dados_exemplo=True` carrega o case de demonstração quando o banco é criado."""
+    Banco novo já vem com o case de demonstração (empresa "Exemplo (case sintético)"), salvo
+    `dados_exemplo=False` ou FIEP_DADOS_EXEMPLO=0. Ele não entra no treino quando há dados reais
+    (`fiep experimento --db`), e sai com `fiep db exemplo --remover`."""
+    if dados_exemplo is None:
+        import os
+        dados_exemplo = os.environ.get("FIEP_DADOS_EXEMPLO", "1") == "1"
     migrar(caminho, dados_exemplo=dados_exemplo)
     return fabrica_sessoes(caminho)()
 
@@ -389,6 +394,11 @@ def exportar(s: Session, destino: str | Path, formato: str = "xlsx") -> list[Pat
 
 
 # ----------------------------------------------------------------------------- dados de exemplo
+
+def id_empresa_exemplo(s: Session) -> int | None:
+    e = s.scalar(select(Empresa).where(Empresa.nome == EMPRESA_EXEMPLO))
+    return e.id if e else None
+
 
 def carregar_exemplo(s: Session) -> dict | None:
     """Carrega o case de demonstração como a empresa de exemplo (se ainda não estiver no banco)."""
