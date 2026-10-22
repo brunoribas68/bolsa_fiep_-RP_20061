@@ -200,8 +200,10 @@ Para os colaboradores enviarem as coletas das empresas. Detalhes: [`docs/PLATAFO
 
 Perfis: **admin** (tudo), **colaborador** (envia e edita dados), **leitor** (consulta e prevê).
 
-Desenvolvimento do frontend: `fiep servir` num terminal e `cd web && npm run dev` noutro
-(http://localhost:5173). Documentação da API: http://127.0.0.1:8000/docs.
+Frontend em React + **Material UI** (MUI), com tema claro/escuro automático e layout para celular
+(o menu lateral vira gaveta). Desenvolvimento: `fiep servir` num terminal e `cd web && npm run dev`
+noutro (http://localhost:5173); o tema fica em `web/src/tema.ts` e os componentes comuns em
+`web/src/componentes/comum.tsx`. Documentação da API: http://127.0.0.1:8000/docs.
 
 ### Variáveis de ambiente
 
@@ -306,7 +308,7 @@ fiep/                   pacote: pipeline, banco e linha de comando
   usuarios.py             contas (bcrypt)
   cli.py                  comando `fiep`
 api/                    backend FastAPI (login, coletas, amostras, previsão) + Dockerfile
-web/                    frontend React (Vite + TypeScript)
+web/                    frontend React + Material UI (Vite + TypeScript)
 notebook/               entrega 1
 artigo/                 entrega 3
 configs/default.toml    todos os parâmetros (protocolos, QC, divisão, níveis, modelos)

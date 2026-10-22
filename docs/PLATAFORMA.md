@@ -1,6 +1,6 @@
 # Plataforma web (login, coletas, banco de amostras)
 
-Frontend em React (`web/`) e backend em FastAPI (`api/`), sobre o mesmo banco e o mesmo modelo da
+Frontend em React com Material UI (`web/`; tema em `web/src/tema.ts`) e backend em FastAPI (`api/`), sobre o mesmo banco e o mesmo modelo da
 pipeline. É por aqui que os colaboradores enviam as coletas feitas nas empresas.
 
 ## Primeira vez

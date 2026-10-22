@@ -1,5 +1,8 @@
+import AddIcon from "@mui/icons-material/Add";
+import { Alert, Box, Button, Chip, Link as MuiLink, Skeleton, Stack, Table, TableBody, TableCell, TableHead, TableRow, Tooltip, Typography } from "@mui/material";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth";
+import { Cabecalho, Kpi, Secao } from "../componentes/comum";
 import { data, num, pct } from "../formato";
 import { useCarregar } from "../usar";
 
@@ -11,79 +14,88 @@ interface PainelDados {
   modelo: { id: string; algoritmo: string; limiar: number; ab_teste: number | null; auc_teste: number | null; n_amostras: number } | null;
 }
 
+const grade = (min: number) => ({ display: "grid", gap: 2, gridTemplateColumns: `repeat(auto-fit, minmax(min(${min}px, 100%), 1fr))` });
+
 export default function Painel() {
   const { usuario, pode } = useAuth();
   const { dados: d, erro } = useCarregar<PainelDados>("/api/painel");
   return (
     <>
-      <div className="cabecalho">
-        <div><h1>Olá, {usuario?.nome.split(" ")[0]}</h1><p>Situação do banco de voltamogramas e do modelo em uso.</p></div>
-        {pode("editar") && <Link className="btn prim" to="/coletas/nova">Nova coleta</Link>}
-      </div>
-      {erro && <div className="erro">{erro}</div>}
+      <Cabecalho titulo={`Olá, ${usuario?.nome.split(" ")[0]}`} sub="Situação do banco de voltamogramas e do modelo em uso."
+                 acoes={pode("editar") && <Button variant="contained" startIcon={<AddIcon />} component={Link} to="/coletas/nova">Nova coleta</Button>} />
+      {erro && <Alert severity="error">{erro}</Alert>}
+      {!d && !erro && <Box sx={grade(200)}>{[0, 1, 2, 3].map(i => <Skeleton key={i} variant="rounded" height={110} />)}</Box>}
       {d && (
-        <div className="pilha">
-          <div className="grade grade-kpi">
-            <div className="kpi"><div className="rot">Amostras</div><div className="val">{d.amostras}</div>
-              <div className="sub">{d.empresas} empresas · {d.coletas} coletas</div></div>
-            <div className="kpi"><div className="rot">Contaminadas</div><div className="val">{d.contaminadas}</div>
-              <div className="sub">{d.nao_contaminadas} não contaminadas</div></div>
-            <div className="kpi"><div className="rot">Sem resultado de plaqueamento</div><div className="val">{d.sem_rotulo}</div>
-              <div className="sub">{d.sem_rotulo ? <Link to="/amostras?rotulo=sem">completar rótulos</Link> : "tudo rotulado"}</div></div>
-            <div className="kpi"><div className="rot">Réplicas completas</div><div className="val">{d.replicas_completas}</div>
-              <div className="sub">de {d.replicas} · {d.reprovadas_qc} medições reprovadas no QC</div></div>
-          </div>
-          <div className="grade grade-2">
-            <div className="cartao">
-              <h2>Modelo em uso</h2>
+        <Stack spacing={2}>
+          <Box sx={grade(200)}>
+            <Kpi rotulo="Amostras" valor={d.amostras} sub={`${d.empresas} empresas · ${d.coletas} coletas`} />
+            <Kpi rotulo="Contaminadas" valor={d.contaminadas} cor="error.main" sub={`${d.nao_contaminadas} não contaminadas`} />
+            <Kpi rotulo="Sem resultado de plaqueamento" valor={d.sem_rotulo} cor={d.sem_rotulo ? "warning.main" : undefined}
+                 sub={d.sem_rotulo ? <MuiLink component={Link} to="/amostras?rotulo=sem">completar rótulos</MuiLink> : "tudo rotulado"} />
+            <Kpi rotulo="Eletrodos completos" valor={d.replicas_completas}
+                 sub={`de ${d.replicas} · ${d.reprovadas_qc} medições reprovadas no QC`} />
+          </Box>
+          <Box sx={grade(360)}>
+            <Secao titulo="Modelo em uso">
               {d.modelo ? (
-                <dl className="dl">
-                  <dt>Modelo</dt><dd>{d.modelo.algoritmo}</dd>
-                  <dt>Registro</dt><dd className="mono">{d.modelo.id}</dd>
-                  <dt>Acurácia balanceada (teste)</dt><dd>{num(d.modelo.ab_teste, 3)}</dd>
-                  <dt>AUC (teste)</dt><dd>{num(d.modelo.auc_teste, 3)}</dd>
-                  <dt>Limiar de decisão</dt><dd>{pct(d.modelo.limiar)}</dd>
-                  <dt>Amostras no treino</dt><dd>{d.modelo.n_amostras}</dd>
-                </dl>
-              ) : <p className="mudo">Nenhum modelo treinado ainda. Rode <code>fiep experimento</code> com os dados do banco.</p>}
-            </div>
-            <div className="cartao">
-              <h2>Coletas recentes</h2>
+                <Stack spacing={1.5}>
+                  <Typography fontWeight={600}>{d.modelo.algoritmo}</Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Chip label={`Acurácia balanceada ${num(d.modelo.ab_teste, 3)}`} color="primary" variant="outlined" />
+                    <Chip label={`AUC ${num(d.modelo.auc_teste, 3)}`} variant="outlined" />
+                    <Chip label={`limiar ${pct(d.modelo.limiar)}`} variant="outlined" />
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary">
+                    Medido no conjunto de teste · {d.modelo.n_amostras} amostras no treino · registro <code>{d.modelo.id}</code>
+                  </Typography>
+                </Stack>
+              ) : <Alert severity="info">Nenhum modelo treinado ainda. Rode <code>fiep experimento --db dados/fiep.db</code>.</Alert>}
+            </Secao>
+            <Secao titulo="Coletas recentes" acoes={<Button size="small" component={Link} to="/coletas">ver todas</Button>}>
               {d.coletas_recentes.length ? (
-                <div className="tabela"><table><tbody>
+                <Table size="small"><TableBody>
                   {d.coletas_recentes.map(c => (
-                    <tr key={c.id}>
-                      <td><Link to={`/coletas/${c.id}`}>{c.descricao || `Coleta #${c.id}`}</Link>
-                        <div className="mudo pequeno">{c.empresa || "sem empresa"} · {c.criado_por || "importação"}</div></td>
-                      <td className="num">{c.n_amostras} amostras</td>
-                      <td className="num mudo">{data(c.criado_em)}</td>
-                    </tr>))}
-                </tbody></table></div>
-              ) : <p className="mudo">Nenhuma coleta ainda.</p>}
-            </div>
-          </div>
-          <div className="cartao">
-            <h2>Amostras por empresa</h2>
-            <div className="tabela"><table>
-              <thead><tr><th>Empresa</th><th className="num">Contaminadas</th><th className="num">Não contaminadas</th>
-                <th className="num">Sem resultado</th><th style={{ width: "34%" }}>Distribuição</th></tr></thead>
-              <tbody>{d.por_empresa.map(e => {
-                const t = e.contaminadas + e.nao_contaminadas + e.sem_rotulo || 1;
-                return (
-                  <tr key={e.empresa}>
-                    <td>{e.empresa}</td><td className="num">{e.contaminadas}</td><td className="num">{e.nao_contaminadas}</td>
-                    <td className="num">{e.sem_rotulo}</td>
-                    <td><div style={{ display: "flex", height: 8, gap: 2 }} aria-hidden="true">
-                      <span style={{ flex: e.contaminadas / t, background: "var(--contaminada)", borderRadius: 3 }} />
-                      <span style={{ flex: e.nao_contaminadas / t, background: "var(--limpa)", borderRadius: 3 }} />
-                      <span style={{ flex: e.sem_rotulo / t, background: "var(--borda-forte)", borderRadius: 3 }} />
-                    </div></td>
-                  </tr>);
-              })}
-              {!d.por_empresa.length && <tr><td colSpan={5} className="vazio">Sem amostras.</td></tr>}
-              </tbody></table></div>
-          </div>
-        </div>
+                    <TableRow key={c.id} hover>
+                      <TableCell sx={{ pl: 0 }}>
+                        <MuiLink component={Link} to={`/coletas/${c.id}`} fontWeight={550}>{c.descricao || `Coleta #${c.id}`}</MuiLink>
+                        <Typography variant="body2" color="text.secondary">{c.empresa || "sem empresa"} · {c.criado_por || "importação"}</Typography>
+                      </TableCell>
+                      <TableCell align="right">{c.n_amostras} amostras</TableCell>
+                      <TableCell align="right" sx={{ color: "text.secondary", pr: 0 }}>{data(c.criado_em)}</TableCell>
+                    </TableRow>))}
+                </TableBody></Table>
+              ) : <Typography color="text.secondary">Nenhuma coleta ainda.</Typography>}
+            </Secao>
+          </Box>
+          <Secao titulo="Amostras por empresa">
+            <Box sx={{ overflowX: "auto" }}>
+              <Table size="small">
+                <TableHead><TableRow><TableCell>Empresa</TableCell><TableCell align="right">Contaminadas</TableCell>
+                  <TableCell align="right">Não contaminadas</TableCell><TableCell align="right">Sem resultado</TableCell>
+                  <TableCell sx={{ width: "34%" }}>Distribuição</TableCell></TableRow></TableHead>
+                <TableBody>{d.por_empresa.map(e => {
+                  const t = e.contaminadas + e.nao_contaminadas + e.sem_rotulo || 1;
+                  return (
+                    <TableRow key={e.empresa} hover>
+                      <TableCell>{e.empresa}</TableCell><TableCell align="right">{e.contaminadas}</TableCell>
+                      <TableCell align="right">{e.nao_contaminadas}</TableCell><TableCell align="right">{e.sem_rotulo}</TableCell>
+                      <TableCell>
+                        <Tooltip title={`${e.contaminadas} contaminadas · ${e.nao_contaminadas} não contaminadas · ${e.sem_rotulo} sem resultado`}>
+                          <Stack direction="row" spacing={.25} sx={{ height: 8 }}>
+                            <Box sx={{ flex: e.contaminadas / t, bgcolor: "error.main", borderRadius: 1 }} />
+                            <Box sx={{ flex: e.nao_contaminadas / t, bgcolor: "success.main", borderRadius: 1 }} />
+                            <Box sx={{ flex: e.sem_rotulo / t, bgcolor: "divider", borderRadius: 1 }} />
+                          </Stack>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>);
+                })}
+                {!d.por_empresa.length && <TableRow><TableCell colSpan={5} align="center" sx={{ color: "text.secondary", py: 3 }}>Sem amostras.</TableCell></TableRow>}
+                </TableBody>
+              </Table>
+            </Box>
+          </Secao>
+        </Stack>
       )}
     </>
   );

@@ -1,41 +1,46 @@
+import { Link as MuiLink, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from "@mui/material";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { num } from "../formato";
 import { NOME_CONJUNTO, type AmostraLinha } from "../tipos";
-import { ChipResultado, ChipRotulo } from "./rotulos";
+import { useAvisos } from "./avisos";
+import { ChipResultado, ChipRotulo, mono } from "./comum";
 
-function CelulaRotulo({ a, aoMudar }: { a: AmostraLinha; aoMudar: (n: AmostraLinha) => void }) {
+function Edicao({ a, aoMudar }: { a: AmostraLinha; aoMudar: (n: AmostraLinha) => void }) {
+  const avisar = useAvisos();
   const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState("");
   async function salvar(campos: Partial<AmostraLinha>) {
-    setSalvando(true); setErro("");
+    setSalvando(true);
     try {
       await api.patch(`/api/amostras/${encodeURIComponent(a.sample_id)}`, campos);
       aoMudar({ ...a, ...campos });
-    } catch (e) { setErro((e as Error).message); } finally { setSalvando(false); }
+      avisar(`${a.sample_id} atualizada.`);
+    } catch (e) { avisar((e as Error).message, "error"); } finally { setSalvando(false); }
   }
   return (
     <>
-      <td>
-        <select aria-label={`Resultado de ${a.sample_id}`} disabled={salvando}
-                value={a.contamination_status === null ? "" : String(a.contamination_status)}
-                onChange={e => salvar({ contamination_status: e.target.value === "" ? null : Number(e.target.value) })}>
-          <option value="">Sem resultado</option><option value="1">Contaminada</option><option value="0">Não contaminada</option>
-        </select>
-        {erro && <div className="erro pequeno">{erro}</div>}
-      </td>
-      <td className="num">
-        <input aria-label={`Carga de ${a.sample_id}`} style={{ width: 80, textAlign: "right" }} inputMode="decimal"
-               defaultValue={a.sample_log10_mean_cfu_ml ?? ""} disabled={salvando}
-               onBlur={e => {
-                 const v = e.target.value.trim().replace(",", ".");
-                 const novo = v === "" ? null : Number(v);
-                 if (novo !== a.sample_log10_mean_cfu_ml && (novo === null || !Number.isNaN(novo)))
-                   salvar({ sample_log10_mean_cfu_ml: novo });
-               }} />
-      </td>
+      <TableCell sx={{ minWidth: 170 }}>
+        <TextField select fullWidth={false} sx={{ minWidth: 160 }} disabled={salvando}
+                   inputProps={{ "aria-label": `Resultado de ${a.sample_id}` }}
+                   value={a.contamination_status === null ? "" : String(a.contamination_status)}
+                   onChange={e => salvar({ contamination_status: e.target.value === "" ? null : Number(e.target.value) })}>
+          <MenuItem value=""><em>Sem resultado</em></MenuItem>
+          <MenuItem value="1">Contaminada</MenuItem>
+          <MenuItem value="0">Não contaminada</MenuItem>
+        </TextField>
+      </TableCell>
+      <TableCell align="right">
+        <TextField fullWidth={false} sx={{ width: 90 }} disabled={salvando} defaultValue={a.sample_log10_mean_cfu_ml ?? ""}
+                   inputProps={{ inputMode: "decimal", style: { textAlign: "right" }, "aria-label": `Carga de ${a.sample_id}` }}
+                   onBlur={e => {
+                     const v = e.target.value.trim().replace(",", ".");
+                     const novo = v === "" ? null : Number(v);
+                     if (novo !== a.sample_log10_mean_cfu_ml && (novo === null || !Number.isNaN(novo)))
+                       salvar({ sample_log10_mean_cfu_ml: novo });
+                   }} />
+      </TableCell>
     </>
   );
 }
@@ -46,31 +51,34 @@ export default function TabelaAmostras({ itens, aoMudar, mostrarEmpresa = true }
   const { pode } = useAuth();
   const editar = pode("editar");
   return (
-    <div className="tabela">
-      <table>
-        <thead><tr>
-          <th>Amostra</th>{mostrarEmpresa && <th>Empresa</th>}
-          <th>Plaqueamento</th><th className="num">Carga (log₁₀ UFC/mL)</th>
-          <th className="num">Réplicas completas</th><th>Uso</th><th>Última previsão</th>
-        </tr></thead>
-        <tbody>
+    <TableContainer>
+      <Table size="small">
+        <TableHead><TableRow>
+          <TableCell>Amostra</TableCell>{mostrarEmpresa && <TableCell>Empresa</TableCell>}
+          <TableCell>Plaqueamento</TableCell><TableCell align="right">Carga (log₁₀ UFC/mL)</TableCell>
+          <TableCell align="right">Eletrodos completos</TableCell><TableCell>Uso</TableCell><TableCell>Última previsão</TableCell>
+        </TableRow></TableHead>
+        <TableBody>
           {itens.map(a => (
-            <tr key={a.sample_id}>
-              <td><Link to={`/amostras/${encodeURIComponent(a.sample_id)}`} className="mono">{a.sample_id}</Link></td>
-              {mostrarEmpresa && <td>{a.empresa || <span className="mudo">—</span>}</td>}
-              {editar ? <CelulaRotulo a={a} aoMudar={aoMudar} /> : (
-                <><td><ChipRotulo v={a.contamination_status} /></td><td className="num">{num(a.sample_log10_mean_cfu_ml, 1)}</td></>
+            <TableRow key={a.sample_id} hover>
+              <TableCell><MuiLink component={Link} to={`/amostras/${encodeURIComponent(a.sample_id)}`} sx={mono}>{a.sample_id}</MuiLink></TableCell>
+              {mostrarEmpresa && <TableCell>{a.empresa || <Typography color="text.secondary">—</Typography>}</TableCell>}
+              {editar ? <Edicao a={a} aoMudar={aoMudar} /> : (
+                <><TableCell><ChipRotulo v={a.contamination_status} /></TableCell>
+                  <TableCell align="right">{num(a.sample_log10_mean_cfu_ml, 1)}</TableCell></>
               )}
-              <td className="num">
-                <span className={a.n_completas ? "" : "chip rep"}>{a.n_completas} de {a.n_replicas}</span>
-              </td>
-              <td>{NOME_CONJUNTO[a.conjunto || ""].replace(" (50/25/25)", "")}</td>
-              <td><ChipResultado r={a.ultima_previsao} /></td>
-            </tr>
+              <TableCell align="right">
+                <Typography variant="body2" color={a.n_completas ? "text.primary" : "warning.main"} fontWeight={a.n_completas ? 400 : 600}>
+                  {a.n_completas} de {a.n_replicas}
+                </Typography>
+              </TableCell>
+              <TableCell>{NOME_CONJUNTO[a.conjunto || ""].replace(" (50/25/25)", "")}</TableCell>
+              <TableCell><ChipResultado r={a.ultima_previsao} /></TableCell>
+            </TableRow>
           ))}
-          {!itens.length && <tr><td colSpan={7} className="vazio">Nenhuma amostra.</td></tr>}
-        </tbody>
-      </table>
-    </div>
+          {!itens.length && <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4, color: "text.secondary" }}>Nenhuma amostra.</TableCell></TableRow>}
+        </TableBody>
+      </Table>
+    </TableContainer>
   );
 }

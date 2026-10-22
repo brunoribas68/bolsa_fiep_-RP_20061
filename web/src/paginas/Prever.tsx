@@ -1,7 +1,16 @@
+import DownloadOutlined from "@mui/icons-material/DownloadOutlined";
+import InsertDriveFileOutlined from "@mui/icons-material/InsertDriveFileOutlined";
+import PlayArrow from "@mui/icons-material/PlayArrow";
+import {
+  Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Chip, LinearProgress, Stack, Table, TableBody,
+  TableCell, TableHead, TableRow, Typography,
+} from "@mui/material";
+import ExpandMore from "@mui/icons-material/ExpandMore";
 import { useState } from "react";
 import { api, baixar } from "../api";
+import { useAvisos } from "../componentes/avisos";
+import { BarraProb, Cabecalho, ChipResultado, mono, Secao } from "../componentes/comum";
 import Soltar, { type ArquivoComCaminho } from "../componentes/Soltar";
-import { BarraProb, ChipResultado } from "../componentes/rotulos";
 import { num, pct } from "../formato";
 import type { PrevisaoAmostra, PrevisaoReplica } from "../tipos";
 
@@ -9,9 +18,9 @@ interface Resposta { modelo: string; algoritmo: string; limiar: number; amostras
   resultados: PrevisaoReplica[]; avisos: string[] }
 
 export default function Prever() {
+  const avisar = useAvisos();
   const [arquivos, setArquivos] = useState<ArquivoComCaminho[]>([]);
   const [res, setRes] = useState<Resposta | null>(null);
-  const [erro, setErro] = useState("");
   const [ocupado, setOcupado] = useState(false);
 
   const fd = () => {
@@ -20,61 +29,73 @@ export default function Prever() {
     return f;
   };
   async function analisar() {
-    setErro(""); setOcupado(true);
+    setOcupado(true);
     try { setRes(await api.post<Resposta>("/api/prever", fd())); }
-    catch (e) { setErro((e as Error).message); } finally { setOcupado(false); }
+    catch (e) { avisar((e as Error).message, "error"); } finally { setOcupado(false); }
   }
   async function excel() {
-    setErro("");
     try { baixar(await api.post<Blob>("/api/excel", fd()), "voltamogramas_excel.zip"); }
-    catch (e) { setErro((e as Error).message); }
+    catch (e) { avisar((e as Error).message, "error"); }
   }
 
   return (
     <>
-      <div className="cabecalho"><div><h1>Previsão rápida</h1>
-        <p>Classifica voltamogramas sem gravar no banco. Para guardar os dados, use <b>Nova coleta</b>.</p></div></div>
-      <div className="pilha">
-        <div className="cartao">
+      <Cabecalho titulo="Previsão rápida" sub="Classifica voltamogramas sem gravar no banco. Para guardar os dados, use Nova coleta." />
+      <Stack spacing={2}>
+        <Secao>
           <Soltar aoReceber={l => { setArquivos(a => [...a, ...l]); setRes(null); }} titulo="Arraste arquivos ou a pasta das amostras"
                   dica=".nox ou Excel/CSV do NOVA. Uma subpasta por amostra; sem pastas, o envio inteiro é uma amostra." />
           {arquivos.length > 0 && (
-            <div className="arquivos">{arquivos.map((a, i) => (
-              <span className="arquivo" key={i}>{a.caminho}
-                <button aria-label={`remover ${a.caminho}`} onClick={() => setArquivos(l => l.filter((_, j) => j !== i))}>×</button></span>))}
-            </div>)}
-          <div className="acoes" style={{ marginTop: 12 }}>
-            <button className="btn prim" disabled={!arquivos.length || ocupado} onClick={analisar}>{ocupado ? "Analisando…" : "Analisar"}</button>
-            <button className="btn" disabled={!arquivos.some(a => /\.nox$/i.test(a.arquivo.name))} onClick={excel}>Converter .nox para Excel</button>
-            {arquivos.length > 0 && <button className="btn link" onClick={() => { setArquivos([]); setRes(null); }}>Limpar</button>}
-          </div>
-          {erro && <div className="erro" style={{ marginTop: 10 }}>{erro}</div>}
-        </div>
+            <Stack direction="row" spacing={.75} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
+              {arquivos.map((a, i) => <Chip key={i} size="small" icon={<InsertDriveFileOutlined />} label={a.caminho} sx={{ fontFamily: "monospace" }}
+                                            onDelete={() => setArquivos(l => l.filter((_, j) => j !== i))} />)}
+            </Stack>)}
+          <Stack direction="row" spacing={1} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
+            <Button variant="contained" startIcon={<PlayArrow />} disabled={!arquivos.length || ocupado} onClick={analisar}>
+              {ocupado ? "Analisando…" : "Analisar"}</Button>
+            <Button variant="outlined" startIcon={<DownloadOutlined />} disabled={!arquivos.some(a => /\.nox$/i.test(a.arquivo.name))}
+                    onClick={excel}>Converter .nox para Excel</Button>
+            {arquivos.length > 0 && <Button onClick={() => { setArquivos([]); setRes(null); }}>Limpar</Button>}
+          </Stack>
+          {ocupado && <LinearProgress sx={{ mt: 2 }} />}
+        </Secao>
         {res && (
-          <div className="cartao">
-            <h2>Resultado por amostra</h2>
-            <p className="mudo pequeno" style={{ marginTop: -6 }}>Modelo {res.algoritmo} · a barra mostra o limiar de decisão ({pct(res.limiar)}).</p>
-            <div className="tabela"><table>
-              <thead><tr><th>Amostra</th><th>Resultado</th><th>Prob. contaminada</th><th>Nível</th>
-                <th className="num">Carga estimada (log₁₀ UFC/mL)</th><th>Réplicas</th></tr></thead>
-              <tbody>{res.amostras.map(a => (
-                <tr key={a.sample_id}><td className="mono">{a.sample_id}</td><td><ChipResultado r={a.resultado} /></td>
-                  <td><BarraProb p={a.prob_contaminada} limiar={res.limiar} /></td><td>{a.nivel_contaminacao || "—"}</td>
-                  <td className="num">{num(a.log10_ufc_ml_estimado, 1)}</td>
-                  <td className="mudo pequeno">{a.replicas_avaliadas} de {a.replicas_total} avaliadas{a.concordancia !== null && ` · ${pct(a.concordancia)} concordam`}</td></tr>))}
-                {!res.amostras.length && <tr><td colSpan={6} className="vazio">Nenhuma amostra identificada.</td></tr>}
-              </tbody></table></div>
-            <details style={{ marginTop: 12 }}><summary className="mudo">Detalhe por réplica (eletrodo)</summary>
-              <div className="tabela"><table>
-                <thead><tr><th>Amostra</th><th>Réplica</th><th>Resultado</th><th>Prob.</th><th>Observação</th></tr></thead>
-                <tbody>{res.resultados.map((r, i) => (
-                  <tr key={i}><td className="mono">{r.sample_id || "—"}</td><td>{r.replicate_id || "—"}</td>
-                    <td><ChipResultado r={r.resultado} /></td><td>{pct(r.prob_contaminada)}</td><td className="mudo pequeno">{r.motivo}</td></tr>))}
-                </tbody></table></div></details>
-            {res.avisos.length > 0 && <div className="aviso" style={{ marginTop: 12 }}><ul>{res.avisos.slice(0, 10).map(a => <li key={a}>{a}</li>)}</ul></div>}
-          </div>
+          <Secao titulo="Resultado por amostra">
+            <Typography variant="body2" color="text.secondary" sx={{ mt: -1, mb: 1.5 }}>
+              Modelo {res.algoritmo} · o traço na barra é o limiar de decisão ({pct(res.limiar)}).
+            </Typography>
+            <Box sx={{ overflowX: "auto" }}>
+              <Table size="small">
+                <TableHead><TableRow><TableCell>Amostra</TableCell><TableCell>Resultado</TableCell><TableCell>Prob. contaminada</TableCell>
+                  <TableCell>Nível</TableCell><TableCell align="right">Carga (log₁₀ UFC/mL)</TableCell><TableCell>Eletrodos</TableCell></TableRow></TableHead>
+                <TableBody>{res.amostras.map(a => (
+                  <TableRow key={a.sample_id}><TableCell sx={mono}>{a.sample_id}</TableCell><TableCell><ChipResultado r={a.resultado} /></TableCell>
+                    <TableCell><BarraProb p={a.prob_contaminada} limiar={res.limiar} /></TableCell><TableCell>{a.nivel_contaminacao || "—"}</TableCell>
+                    <TableCell align="right">{num(a.log10_ufc_ml_estimado, 1)}</TableCell>
+                    <TableCell sx={{ color: "text.secondary" }}>{a.replicas_avaliadas} de {a.replicas_total} avaliados{a.concordancia !== null && ` · ${pct(a.concordancia)} concordam`}</TableCell></TableRow>))}
+                  {!res.amostras.length && <TableRow><TableCell colSpan={6} align="center" sx={{ py: 3, color: "text.secondary" }}>Nenhuma amostra identificada.</TableCell></TableRow>}
+                </TableBody>
+              </Table>
+            </Box>
+            <Accordion disableGutters variant="outlined" sx={{ mt: 2, "&:before": { display: "none" } }}>
+              <AccordionSummary expandIcon={<ExpandMore />}><Typography>Detalhe por eletrodo</Typography></AccordionSummary>
+              <AccordionDetails sx={{ overflowX: "auto" }}>
+                <Table size="small">
+                  <TableHead><TableRow><TableCell>Amostra</TableCell><TableCell>Eletrodo</TableCell><TableCell>Resultado</TableCell>
+                    <TableCell>Prob.</TableCell><TableCell>Observação</TableCell></TableRow></TableHead>
+                  <TableBody>{res.resultados.map((r, i) => (
+                    <TableRow key={i}><TableCell sx={mono}>{r.sample_id || "—"}</TableCell><TableCell>{r.replicate_id || "—"}</TableCell>
+                      <TableCell><ChipResultado r={r.resultado} /></TableCell><TableCell>{pct(r.prob_contaminada)}</TableCell>
+                      <TableCell sx={{ color: "text.secondary" }}>{r.motivo}</TableCell></TableRow>))}
+                  </TableBody>
+                </Table>
+              </AccordionDetails>
+            </Accordion>
+            {res.avisos.length > 0 && <Alert severity="warning" sx={{ mt: 2 }}><Box component="ul" sx={{ m: 0, pl: 2 }}>
+              {res.avisos.slice(0, 10).map(a => <li key={a}>{a}</li>)}</Box></Alert>}
+          </Secao>
         )}
-      </div>
+      </Stack>
     </>
   );
 }
