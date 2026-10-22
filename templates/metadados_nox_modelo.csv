@@ -1,4 +1,4 @@
-arquivo,measurement_id,sample_id,replicate_id,sensor_state,contamination_status,qc_flag,target_bacterium,sensor_id,sensor_lot,experimental_batch,surface_type,operator_id,measurement_date,sample_log10_mean_cfu_ml
-EMPRESA1_S001_R1_carbon.nox,EMPRESA1_S001_R1_0,EMPRESA1_S001,1,carbon_clean,1,PASS,Escherichia coli,L01-S001-R1,L01,B01,Aço inox,OP01,2026-11-10,5.2
-EMPRESA1_S001_R1_probe.nox,EMPRESA1_S001_R1_1,EMPRESA1_S001,1,capture_probe,1,PASS,Escherichia coli,L01-S001-R1,L01,B01,Aço inox,OP01,2026-11-10,5.2
-EMPRESA1_S001_R1_rRNA.nox,EMPRESA1_S001_R1_2,EMPRESA1_S001,1,capture_probe_16S_rRNA,1,PASS,Escherichia coli,L01-S001-R1,L01,B01,Aço inox,OP01,2026-11-10,5.2
+arquivo,measurement_id,sample_id,replicate_id,sensor_state,contamination_status,sample_log10_mean_cfu_ml,qc_flag,target_bacterium,surface_type,sensor_lot,experimental_batch,operator_id,measurement_date
+EMP1-A01/bloqueio-E1.nox,EMP1-A01__bloqueio-E1,EMP1-A01,E1,bloqueio,,,,,Aço inox,L01,B01,OP01,2026-11-10
+EMP1-A01/mAb-NS1-E1.nox,EMP1-A01__mAb-NS1-E1,EMP1-A01,E1,mAb_NS1,,,,,Aço inox,L01,B01,OP01,2026-11-10
+EMP1-A01/final-E1.nox,EMP1-A01__final-E1,EMP1-A01,E1,final,,,,,Aço inox,L01,B01,OP01,2026-11-10

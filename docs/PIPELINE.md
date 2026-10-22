@@ -1,7 +1,7 @@
 # Como a pipeline funciona
 
 ```
-dados/ (.nox + planilha)  ─► ingerir ─► QC ─► banco SQLite (dados/fiep.db)
+dados/ ou plataforma (.nox / Excel do NOVA) ─► ingerir ─► QC ─► banco (dados/fiep.db)
                                                    │
                                                    ▼
           divisão por amostra: treino 50% · validação 25% · teste 25% (+ pastas treino/ validacao/ teste/)
@@ -10,7 +10,7 @@ dados/ (.nox + planilha)  ─► ingerir ─► QC ─► banco SQLite (dados/fi
                                                           │                                   │
                                      resultados/<id>/ (figuras, tabelas) ─► artigo/gerado/   modelos/<id>/
                                                                                               │
-nova coleta (.nox + planilha) ─► ingerir ─► QC ─► mesma grade/config do modelo ─► previsão ◄──┘
+nova coleta (.nox / Excel)    ─► ingerir ─► QC ─► mesma grade/config do modelo ─► previsão ◄──┘
                                               └─► reprovadas: "REPETIR MEDIÇÃO" + motivo
 ```
 
@@ -45,14 +45,22 @@ Ver [`dados/README.md`](../dados/README.md). Tabelas são reconhecidas **pelas c
 | Plaqueamento | `sample_id`, `colony_count` |
 | Amostras (rótulo e carga, uma linha por amostra) | `sample_id`, `contamination_status` |
 
-Metadados dos `.nox` sem planilha são deduzidos por `fiep/metadados_auto.py` (estágio pelo nome do
-arquivo/procedimento, réplica pelo canal do potenciostato, amostra pela pasta, rótulo pelo nome da
-pasta).
+Metadados sem planilha são deduzidos por `fiep/metadados_auto.py`: etapa pelo nome do
+arquivo/procedimento, eletrodo pelo `E1`, `E2`… do nome (ou o canal do potenciostato), amostra pela
+pasta, rótulo pelo nome da pasta.
+
+## Protocolos (`fiep/protocolos.py`)
+
+O protocolo do biossensor (etapas na ordem e técnica) é reconhecido pelos nomes das etapas
+(`[dados].protocolo = "auto"`) e gravado no modelo: **NS1** (SWV: bloqueio → mAb_NS1 → final) e
+**rRNA 16S** do case (DPV: carbon_clean → capture_probe → capture_probe_16S_rRNA). O modelo usa a
+diferença entre a última etapa e a anterior no mesmo eletrodo. Só medições da técnica do protocolo
+entram no treino.
 
 `.nox` ou Excel/CSV exportado pelo NOVA (`fiep/io/nox.py: exportacao_to_curves`; aba `Info` do
 `fiep excel` traz canal e procedimento). Do `.nox`: DPV/SWV → potencial aplicado × `WE(1).δ.Current`; CV/LSV → potencial aplicado ×
 `WE(1).Current` (último scan). Correntes em µA. O potencial medido e a corrente de base vão para o QC.
-Só a técnica de `[dados].tecnica` (padrão DPV) entra no treino.
+No Excel, a técnica vem do nome/procedimento ou das colunas (forward/backward = SWV).
 
 ## Controle de qualidade (`fiep/qc.py`)
 
@@ -60,8 +68,8 @@ Só a técnica de `[dados].tecnica` (padrão DPV) entra no treino.
 |---|---|
 | menos de `min_pontos` pontos ou muitos pontos inválidos | FAIL |
 | corrente bruta acima de `max_abs_corrente_ua` (sobrecarga) | FAIL |
-| potencial medido longe do aplicado em mais de `max_frac_desvio_e` dos pontos | FAIL |
-| corrente > `fator_outlier_lote` × mediana da mesma técnica/estágio | REVIEW |
+| potencial medido longe do aplicado em mais de `max_frac_desvio_e` dos pontos, descontado o deslocamento constante (amplitude do pulso na SWV) | FAIL |
+| corrente > `fator_outlier_lote` × mediana da mesma técnica/etapa | REVIEW |
 | `qc_flag` da planilha | vale o mais restritivo |
 
 ## Experimentos (`fiep/experimentos.py`)

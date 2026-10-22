@@ -12,10 +12,11 @@ gerado/             figuras e tabelas do último `fiep experimento --artigo` (n�
 
 ## Atualizar os resultados
 
-Depois de colocar os dados reais em `dados/treino/` (e `dados/validacao/`), na raiz do repositório:
+Depois de colocar os dados reais em `dados/` (ver `dados/README.md`), na raiz do repositório:
 
 ```bash
-fiep experimento --treino dados/treino --validacao dados/validacao --artigo
+fiep experimento --artigo                 # a partir das pastas
+fiep experimento --db dados/fiep.db --artigo   # ou a partir do banco (dados enviados pela plataforma)
 ```
 
 Os números do texto, as tabelas e as figuras se atualizam na próxima compilação. Trechos que
