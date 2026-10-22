@@ -9,6 +9,7 @@ Gerado por `fiep docs` a partir da ajuda dos comandos — não edite à mão. Se
 | [`fiep db`](#fiep-db) | banco de dados: migrar, importar, resumo, sql, exportar, exemplo |
 | [`fiep experimento`](#fiep-experimento) | divide 50/25/25, compara representações x modelos e registra o melhor |
 | [`fiep prever`](#fiep-prever) | classifica dados novos com o modelo registrado (por amostra e por eletrodo) |
+| [`fiep modelos`](#fiep-modelos) | modelos treinados: listar, mostrar, ativar, catalogo |
 | [`fiep servir`](#fiep-servir) | abre a plataforma web (login, coletas, amostras, previsão) |
 | [`fiep usuario`](#fiep-usuario) | contas da plataforma: criar, listar, senha, desativar |
 | [`fiep verificar`](#fiep-verificar) | diagnóstico da instalação (dependências, banco, modelo, frontend) |
@@ -89,8 +90,9 @@ opções:
 ```
 uso: fiep experimento [-h] [--dados DADOS] [--db DB] [--filtro FILTRO] [--filtro-treino FILTRO_TREINO]
                         [--filtro-validacao FILTRO_VALIDACAO] [--filtro-teste FILTRO_TESTE] [--com-exemplo]
-                        [--saida SAIDA] [--modelos MODELOS] [--rapido] [--artigo]
-                        [--artigo-pasta ARTIGO_PASTA] [--config CONFIG]
+                        [--saida SAIDA] [--modelos MODELOS] [--rapido] [--algoritmos ALGORITMOS]
+                        [--variantes VARIANTES] [--nao-ativar] [--artigo] [--artigo-pasta ARTIGO_PASTA]
+                        [--config CONFIG]
 
 Divide as amostras em treino/validação/teste (padrão 50/25/25, por amostra, estratificado), ajusta 5 representações x 12 modelos no treino, escolhe pela validação, re-treina com treino+validação e mede uma vez no teste. Registra o melhor em modelos/ (usado pela plataforma) e gera figuras/tabelas.
 
@@ -109,6 +111,11 @@ opções:
   --saida SAIDA                   pasta dos resultados (padrão: resultados)
   --modelos MODELOS               pasta onde o modelo é registrado (padrão: modelos)
   --rapido                        menos variantes e modelos (para testar)
+  --algoritmos ALGORITMOS         só estes classificadores, separados por vírgula (lista: fiep modelos
+                                  catalogo)
+  --variantes VARIANTES           só estas representações, separadas por vírgula (lista: fiep modelos
+                                  catalogo)
+  --nao-ativar                    registra o modelo sem trocar o que está em uso (para comparar)
   --artigo                        copia figuras, tabelas e números para o artigo
   --artigo-pasta ARTIGO_PASTA     destino do --artigo (padrão: artigo/gerado)
   --config CONFIG                 arquivo de configuração (padrão: variável FIEP_CONFIG ou
@@ -130,6 +137,29 @@ opções:
   --db DB            gravar as previsões neste banco
   --config CONFIG    arquivo de configuração (padrão: variável FIEP_CONFIG ou configs/default.toml); usa os
                      [niveis] de contaminação dela
+```
+
+## fiep modelos
+
+```
+uso: fiep modelos [-h] [--id ID] [--modelos MODELOS] [--resultados RESULTADOS]
+                    {listar,mostrar,ativar,catalogo}
+
+Ações:
+  listar    modelos registrados, com as métricas no teste (* = em uso)
+  mostrar   métricas e comparação de um modelo (--id)
+  ativar    passa a usar o modelo --id na plataforma e no fiep prever
+  catalogo  algoritmos e representações disponíveis para o fiep experimento
+
+argumentos:
+  {listar,mostrar,ativar,catalogo}
+                                  o que fazer
+
+opções:
+  -h, --help                      mostra esta ajuda
+  --id ID                         id do modelo (ex.: 20261022-102514)
+  --modelos MODELOS               pasta de modelos (padrão: modelos)
+  --resultados RESULTADOS         pasta dos experimentos (padrão: resultados)
 ```
 
 ## fiep servir

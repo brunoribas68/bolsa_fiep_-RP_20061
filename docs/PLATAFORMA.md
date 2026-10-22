@@ -32,7 +32,22 @@ Não há cadastro aberto: o admin cria as contas (página **Usuários** ou `fiep
 
 ## Telas
 
-- **Painel**: amostras por resultado e por empresa, réplicas completas, modelo em uso, coletas recentes.
+- **Painel**: amostras por resultado e por empresa, réplicas completas, modelo em uso (com a acurácia
+  no teste), coletas recentes.
+- **Modelos**: métricas do modelo em uso no conjunto de teste (acurácia, acurácia balanceada,
+  sensibilidade, especificidade, AUC e acurácia balanceada por amostra) e as abas:
+  - *Comparação de algoritmos*: o melhor resultado de cada algoritmo e a tabela de todas as
+    combinações representação × algoritmo (CV, validação e teste; a escolhida tem estrela);
+  - *Gráficos*: figuras do experimento (ROC, matriz de confusão, comparação, fórmula SISSO);
+  - *Carga*: regressores da carga (log10 UFC/mL);
+  - *Histórico*: todos os modelos treinados; o admin escolhe qual a plataforma usa;
+  - *Treinos*: andamento e resultado dos treinos iniciados pela plataforma.
+
+  **Treinar modelos** (colaborador ou admin) abre a escolha dos algoritmos de IA (agrupados por
+  família: lineares, SVM, vizinhos, árvores, rede neural, probabilísticos, SISSO), das
+  representações, das empresas, da divisão treino/validação/teste e se inclui os dados de
+  exemplo. O treino roda em segundo plano, um por vez. O modelo novo só entra em uso se o admin
+  marcar "usar o melhor modelo" ou clicar **Usar este modelo**.
 - **Nova coleta**: empresa, data, uso no treino (sorteio 50/25/25, ou fixo em treino/validação/teste) e as
   amostras. Arraste a pasta do lote (uma subpasta por amostra) ou adicione amostra por amostra. Para cada
   uma: código, resultado do plaqueamento e carga. Aceita `.nox` e Excel/CSV exportado do NOVA.
@@ -61,4 +76,7 @@ Em produção: rode atrás de HTTPS, defina `FIEP_SECRET` (`openssl rand -base64
 ## API
 
 Documentação interativa em `/docs`. Principais rotas: `/api/auth/*`, `/api/usuarios`, `/api/empresas`,
-`/api/coletas`, `/api/amostras`, `/api/medicoes/{id}`, `/api/prever`, `/api/excel`, `/api/painel`.
+`/api/coletas`, `/api/amostras`, `/api/medicoes/{id}`, `/api/prever`, `/api/excel`, `/api/painel`,
+`/api/catalogo` (algoritmos e representações), `/api/modelos` (lista com métricas),
+`/api/modelos/{id}` (cartão + comparação + regressão + por amostra), `/api/modelos/{id}/figuras/{nome}`,
+`POST /api/modelos/{id}/ativar` (admin), `GET/POST /api/treinos` e `/api/treinos/{id}`.

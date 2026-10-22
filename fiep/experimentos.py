@@ -143,9 +143,17 @@ def _fmt(x):
 
 def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
           pasta_modelos: str | Path = "modelos", variantes: list[str] | None = None, rapido: bool = False,
-          registrar: bool = True) -> dict:
+          registrar: bool = True, algoritmos: list[str] | None = None, ativar: bool = True,
+          progresso=None) -> dict:
     """Roda o experimento. `dados` é uma Divisao (treino/validação/teste) ou um Dataset único,
-    que então é dividido nas proporções de `[divisao]` da configuração."""
+    que então é dividido nas proporções de `[divisao]` da configuração.
+
+    `algoritmos` limita os classificadores (nomes de `fiep.catalogo`); `variantes`, as representações.
+    `ativar=False` registra o modelo sem trocar o que está em uso. `progresso(texto, fração)` é
+    chamado a cada combinação avaliada (usado pela plataforma)."""
+    def avisar(txt, frac):
+        if progresso:
+            progresso(txt, frac)
     div = dados if isinstance(dados, Divisao) else montar(dados, {}, cfg)
     from .protocolos import ajustar
     cfg = ajustar(cfg, div.treino)           # etapas e técnica do protocolo dos dados (gravadas no modelo)
@@ -158,7 +166,16 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
     pasta.mkdir(parents=True, exist_ok=True)
 
     variantes = variantes or (["dif_resumo", "dif_curva"] if rapido else list(VARIANTES))
-    modelos = classificadores(seed, rapido=rapido)
+    modelos = classificadores(seed, rapido=rapido and not algoritmos)
+    if algoritmos:
+        desconhecidos = [a for a in algoritmos if a not in modelos]
+        if desconhecidos:
+            raise ValueError(f"Algoritmos desconhecidos: {desconhecidos}. Disponíveis: {list(modelos)}")
+        modelos = {k: modelos[k] for k in algoritmos}
+    desconhecidas = [v for v in variantes if v not in VARIANTES]
+    if desconhecidas:
+        raise ValueError(f"Representações desconhecidas: {desconhecidas}. Disponíveis: {list(VARIANTES)}")
+    total, feitas = len(variantes) * len(modelos), 0
     linhas, prob_teste, tabelas = [], {}, {}
 
     for v in variantes:
@@ -178,6 +195,8 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
         tab_trva = pd.concat([tab_tr, tab_va], ignore_index=True) if len(tab_va) else tab_tr
         tabelas[v] = (tab_tr, tab_va, tab_te, grade, feats, cfg_v, qc)
         for nome, est in modelos.items():
+            feitas += 1
+            avisar(f"{v} · {nome}", feitas / max(total, 1) * 0.85)
             try:
                 proba, lim, met, dp = _cv_classificacao(est, X, y, g, k, seed)
                 linha = {"variante": v, "modelo": nome, "n_treino": len(y), "n_features": len(feats),
@@ -239,6 +258,7 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
         Xs, ys, _ = _xy(ts, t[4])
         sisso_formula = clone(modelos["sisso"]).fit(Xs, ys).formula()
 
+    avisar("regressão da carga", 0.88)
     # ---------------- regressão da carga nas contaminadas
     def contaminadas(t):
         return t[(t[ROTULO] == 1) & t[ALVO_REG].notna()] if len(t) and ALVO_REG in t else pd.DataFrame()
@@ -319,6 +339,9 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
         "teste_por_amostra": _metricas_amostra(por_amostra),
         "niveis": cfg.get("niveis"),
         "teste_niveis": _metricas_niveis(por_amostra) if niveis_teste is not None else None,
+        "algoritmos": list(modelos), "variantes": list(variantes),
+        "protocolo": cfg["dados"].get("protocolo"), "tecnica": cfg["dados"].get("tecnica"),
+        "estagios": cfg["dados"].get("estagios"),
     }
 
     if registrar:
@@ -330,7 +353,10 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
             info={"n_amostras": int(tab_trva["sample_id"].nunique()), "n_linhas": int(len(tab_trva)),
                   "impressao_dados": _impressao_dados(todos)},
             pasta_modelos=pasta_modelos,
-            extras={"experimento": exp_id, "variante": v_best, "divisao": resumo["teste"],
+            ativar=ativar,
+            extras={"experimento": exp_id, "pasta_experimento": str(pasta), "variante": v_best,
+                    "divisao": resumo["teste"], "protocolo": cfg["dados"].get("protocolo"),
+                    "teste_por_amostra": resumo["teste_por_amostra"],
                     "metricas_validacao": {k.replace("val_", ""): melhor[k] for k in melhor.index
                                            if k.startswith("val_")},
                     "metricas_teste": {k.replace("teste_", ""): melhor[k] for k in melhor.index
@@ -341,6 +367,7 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
 
     (pasta / "resumo.json").write_text(json.dumps(resumo, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
 
+    avisar("figuras e tabelas", 0.95)
     from . import figuras
     figuras.gerar_todas(pasta, placar, prob_teste, (v_best, m_best), tabelas, reg, reg_pred, final, resumo)
     log.info("Experimento %s: melhor = %s/%s (val BA %s; teste BA %s)", exp_id, v_best, m_best,

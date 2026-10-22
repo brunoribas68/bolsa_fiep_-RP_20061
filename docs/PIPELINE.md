@@ -80,8 +80,10 @@ No Excel, a técnica vem do nome/procedimento ou das colunas (forward/backward =
    grade de potencial é definida só no treino.
 2. **Variantes** de representação: `dif_resumo`, `dif_curva`, `dif_curva_linha_base`,
    `dif_curva_sem_suavizar`, `estagio_final`.
-3. **Modelos** (`fiep/catalogo.py`): regressão logística (L2 em 3 intensidades, L1), LDA, SVM RBF
-   (2 valores de C), kNN, floresta aleatória, extra trees, gradient boosting e SISSO simplificado.
+3. **Algoritmos** (`fiep/catalogo.py`, 14): regressão logística (L2 em 3 intensidades, L1), LDA, SVM
+   RBF (2 valores de C), kNN, floresta aleatória, extra trees, gradient boosting, rede neural MLP
+   (64-32, parada antecipada), naive Bayes gaussiano e SISSO simplificado. `--algoritmos` e
+   `--variantes` (ou a tela Modelos) restringem a comparação; `fiep modelos catalogo` lista os nomes.
 4. **Treino**: cada combinação é ajustada no treino; a validação cruzada agrupada por amostra
    (StratifiedGroupKFold) dá a média ± desvio e o limiar (J de Youden nas previsões fora da dobra).
 5. **Escolha na validação**: maior acurácia balanceada no conjunto de validação (desempate: AUC na
@@ -94,7 +96,8 @@ No Excel, a técnica vem do nome/procedimento ou das colunas (forward/backward =
    contaminação e a matriz de confusão dos níveis vai para `niveis_teste.csv`.
 8. Saídas em `resultados/<id>/`: `classificacao.csv`, `regressao.csv`, `resumo.json`,
    `figuras/*.png`, `tabelas/*.tex`; o melhor modelo (+ regressor) vai para `modelos/<id>/` e
-   passa a ser o usado pela API. Com `--artigo`, figuras e tabelas são copiadas para `artigo/gerado/`.
+   passa a ser o usado pela API (com `--nao-ativar`, ou pela plataforma sem marcar "usar", fica só
+   registrado; `fiep modelos ativar --id` troca depois). Com `--artigo`, figuras e tabelas são copiadas para `artigo/gerado/`.
 
 Para testar mais modelos, acrescente-os em `fiep/catalogo.py`; para outra representação, em
 `VARIANTES` de `fiep/experimentos.py`.
@@ -103,5 +106,7 @@ Para testar mais modelos, acrescente-os em `fiep/catalogo.py`; para outra repres
 
 `modelos/<id>/modelo.joblib` (modelo + regressor + grade + config + features + limiar) e
 `cartao.json` (métricas de CV, validação e teste, divisão usada, variante, commit do código, impressão digital dos dados);
-`modelos/registro.csv` acumula o histórico e `modelos/ATUAL` aponta para o modelo em uso. O banco
+`modelos/registro.csv` acumula o histórico e `modelos/ATUAL` aponta para o modelo em uso.
+`fiep/registro.py` junta cartão + tabelas do experimento (`resultados/<exp>/`) para a tela Modelos
+e para `fiep modelos listar|mostrar|ativar`. O banco
 também registra modelos e previsões (`docs/BANCO.md`).

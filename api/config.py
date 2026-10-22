@@ -3,6 +3,7 @@
     FIEP_DB_URL          banco (padrão: sqlite em dados/fiep.db; Postgres: postgresql+psycopg://...)
     FIEP_SECRET          chave das sessões (obrigatória em produção; sem ela, gera dados/.segredo)
     FIEP_MODELOS         pasta de modelos (padrão: modelos)
+    FIEP_RESULTADOS      pasta dos experimentos e treinos (padrão: resultados)
     FIEP_ARMAZENAMENTO   onde guardar os arquivos recebidos (padrão: dados/recebidos)
     FIEP_COOKIE_SEGURO   1 = cookie só por HTTPS (use em produção)
     FIEP_SESSAO_HORAS    duração da sessão (padrão: 8)
@@ -49,6 +50,7 @@ class Config:
     sessao_horas: float
     dados_exemplo: bool
     config_pipeline: str | None
+    resultados: str = "resultados"
 
     @classmethod
     def do_ambiente(cls) -> "Config":
@@ -62,4 +64,5 @@ class Config:
             sessao_horas=float(os.environ.get("FIEP_SESSAO_HORAS", "8")),
             dados_exemplo=os.environ.get("FIEP_DADOS_EXEMPLO", "1") == "1",
             config_pipeline=cfg if Path(cfg).exists() else None,
+            resultados=os.environ.get("FIEP_RESULTADOS", "resultados"),
         )

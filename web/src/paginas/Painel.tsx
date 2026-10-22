@@ -11,7 +11,7 @@ interface PainelDados {
   replicas_completas: number; replicas: number; reprovadas_qc: number; empresas: number; coletas: number;
   por_empresa: { empresa: string; contaminadas: number; nao_contaminadas: number; sem_rotulo: number }[];
   coletas_recentes: { id: number; descricao: string | null; criado_em: string; n_amostras: number; empresa: string | null; criado_por: string | null }[];
-  modelo: { id: string; algoritmo: string; limiar: number; ab_teste: number | null; auc_teste: number | null; n_amostras: number } | null;
+  modelo: { id: string; algoritmo: string; limiar: number; acuracia_teste: number | null; ab_teste: number | null; auc_teste: number | null; n_amostras: number } | null;
 }
 
 const grade = (min: number) => ({ display: "grid", gap: 2, gridTemplateColumns: `repeat(auto-fit, minmax(min(${min}px, 100%), 1fr))` });
@@ -36,11 +36,12 @@ export default function Painel() {
                  sub={`de ${d.replicas} · ${d.reprovadas_qc} medições reprovadas no QC`} />
           </Box>
           <Box sx={grade(360)}>
-            <Secao titulo="Modelo em uso">
+            <Secao titulo="Modelo em uso" acoes={<Button size="small" component={Link} to="/modelos">detalhes e comparação</Button>}>
               {d.modelo ? (
                 <Stack spacing={1.5}>
                   <Typography fontWeight={600}>{d.modelo.algoritmo}</Typography>
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Chip label={`Acurácia ${pct(d.modelo.acuracia_teste, 1)}`} color="primary" />
                     <Chip label={`Acurácia balanceada ${num(d.modelo.ab_teste, 3)}`} color="primary" variant="outlined" />
                     <Chip label={`AUC ${num(d.modelo.auc_teste, 3)}`} variant="outlined" />
                     <Chip label={`limiar ${pct(d.modelo.limiar)}`} variant="outlined" />

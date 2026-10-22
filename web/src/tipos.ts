@@ -70,3 +70,38 @@ export const NOME_CONJUNTO: Record<string, string> = {
   "": "Sorteio (50/25/25)", treino: "Treino", validacao: "Validação", teste: "Teste",
 };
 export const NOME_PAPEL: Record<Papel, string> = { admin: "Administrador", colaborador: "Colaborador", leitor: "Leitor" };
+
+export interface ModeloResumo {
+  id: string; criado_em: string | null; modelo: string | null; variante: string | null; protocolo: string | null;
+  experimento: string | null; n_amostras: number | null; limiar: number | null; em_uso: boolean;
+  teste_acuracia: number | null; teste_balanced_accuracy: number | null; teste_sensibilidade: number | null;
+  teste_especificidade: number | null; teste_roc_auc: number | null; teste_amostra_balanced_accuracy: number | null;
+  validacao_balanced_accuracy: number | null; cv_balanced_accuracy: number | null; regressor: string | null;
+}
+
+export interface LinhaComparacao {
+  posicao: number; variante: string; modelo: string; cv_balanced_accuracy: number | null; cv_ba_desvio: number | null;
+  val_balanced_accuracy: number | null; val_roc_auc: number | null; teste_balanced_accuracy: number | null;
+  teste_sensibilidade: number | null; teste_especificidade: number | null; teste_roc_auc: number | null;
+}
+
+export interface ModeloDetalhe extends ModeloResumo {
+  cartao: Record<string, unknown>;
+  resumo: { teste?: string; amostras_treino?: number; amostras_validacao?: number; amostras_teste?: number;
+            formula_sisso?: string | null; criterio_escolha?: string; estagios?: string[]; tecnica?: string;
+            melhor_regressao?: Record<string, number | string> | null; teste_niveis?: { acuracia: number } | null };
+  comparacao: LinhaComparacao[];
+  regressao: { variante: string; modelo: string; cv_rmse: number | null; val_rmse: number | null; teste_rmse: number | null; teste_r2: number | null }[];
+  figuras: { arquivo: string; titulo: string }[];
+}
+
+export interface Catalogo {
+  algoritmos: { id: string; familia: string; descricao: string }[];
+  variantes: { id: string; descricao: string }[];
+}
+
+export interface Treino {
+  id: string; estado: "na fila" | "rodando" | "concluido" | "erro" | "interrompido"; progresso: number; etapa: string;
+  params: { algoritmos: string[]; variantes: string[]; empresas: number[]; com_exemplo: boolean; ativar: boolean };
+  usuario: string; criado_em: string; terminado_em?: string; mensagem: string; modelo: string | null; divisao?: string;
+}

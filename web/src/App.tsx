@@ -2,6 +2,7 @@ import BusinessOutlined from "@mui/icons-material/BusinessOutlined";
 import CloudUploadOutlined from "@mui/icons-material/CloudUploadOutlined";
 import DashboardOutlined from "@mui/icons-material/DashboardOutlined";
 import GroupOutlined from "@mui/icons-material/GroupOutlined";
+import InsightsOutlined from "@mui/icons-material/InsightsOutlined";
 import Logout from "@mui/icons-material/Logout";
 import MenuIcon from "@mui/icons-material/Menu";
 import PersonOutline from "@mui/icons-material/PersonOutline";
@@ -21,6 +22,7 @@ import Coletas from "./paginas/Coletas";
 import Conta from "./paginas/Conta";
 import Empresas from "./paginas/Empresas";
 import Login from "./paginas/Login";
+import Modelos from "./paginas/Modelos";
 import NovaColeta from "./paginas/NovaColeta";
 import Painel from "./paginas/Painel";
 import Prever from "./paginas/Prever";
@@ -45,6 +47,7 @@ function Menu({ aoNavegar }: { aoNavegar?: () => void }) {
     { para: "/", nome: "Painel", Ic: DashboardOutlined },
     { para: "/coletas", nome: "Coletas", Ic: CloudUploadOutlined },
     { para: "/amostras", nome: "Amostras", Ic: ScienceOutlined },
+    { para: "/modelos", nome: "Modelos", Ic: InsightsOutlined },
     { para: "/prever", nome: "Previsão rápida", Ic: ShowChart },
     { para: "/empresas", nome: "Empresas", Ic: BusinessOutlined },
     ...(pode("admin") ? [{ para: "/usuarios", nome: "Usuários", Ic: GroupOutlined }] : []),
@@ -124,6 +127,8 @@ export default function App() {
           <Route path="/amostras" element={<Amostras />} />
           <Route path="/amostras/:id" element={<AmostraDetalhe />} />
           <Route path="/prever" element={<Prever />} />
+          <Route path="/modelos" element={<Modelos />} />
+          <Route path="/modelos/:id" element={<Modelos />} />
           <Route path="/empresas" element={<Empresas />} />
           <Route path="/usuarios" element={pode("admin") ? <Usuarios /> : <Navigate to="/" />} />
           <Route path="/conta" element={<Conta />} />
