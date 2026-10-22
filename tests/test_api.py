@@ -197,3 +197,35 @@ def test_modelos_comparacao_e_treino_pela_plataforma(plataforma):
     assert plataforma.post(f"/api/modelos/{novo['id']}/ativar", headers=H).json()["em_uso"] == novo["id"]
     assert plataforma.get("/api/saude").json()["modelo"] == novo["id"]
     assert plataforma.post("/api/treinos", json={"algoritmos": ["inexistente"]}, headers=H).status_code == 400
+
+
+def test_graficos_linha_e_dispersao(plataforma):
+    entrar(plataforma)
+    vazio = plataforma.get("/api/graficos").json()
+    assert vazio["vazio"] and vazio["empresas"] == []
+    emp = plataforma.post("/api/empresas", json={"nome": "Laticínio G"}, headers=H).json()
+    files, caminhos, amostras = arquivos_coleta(6, prefixo="GR")
+    r = plataforma.post("/api/coletas", files=files, headers=H, data={
+        "caminhos": caminhos, "empresa_id": emp["id"], "amostras": json.dumps(amostras)})
+    assert r.status_code == 201, r.text
+    g = plataforma.get(f"/api/graficos?empresa_id={emp['id']}").json()
+    assert g["vazio"] is None and g["protocolo"] == "rrna16s" and g["tecnica"] == "DPV"
+    assert [e["id"] for e in g["estagios"]] == ["carbon_clean", "capture_probe", "capture_probe_16S_rRNA"]
+    n = len(g["potencial_v"])
+    assert 20 < n <= 200 and all(len(m["media"]) == n == len(m["desvio"]) for m in g["medias"])
+    # médias por etapa × resultado (+ todas) e a diferença última − anterior
+    todas = [m for m in g["medias"] if m["classe"] == "todas"]
+    assert len(todas) == 3 and all(m["n"] == 12 for m in todas)
+    assert sum(d["n"] for d in g["diferenca"] if d["classe"] != "todas") == 12
+    # dispersão: um ponto por eletrodo, em colunas, com descritores e a carga
+    assert g["n_eletrodos"] == 12 and len(g["pontos"]["sample_id"]) == 12
+    ids = {v["id"] for v in g["variaveis"]}
+    assert {"capture_probe_16S_rRNA_i_pico", "delta_i_pico_capture_probe_16S_rRNA_vs_capture_probe"} <= ids
+    assert all(len(v) == 12 for v in g["pontos"].values())
+    # mudar o rótulo de uma amostra muda o gráfico (o cache acompanha os dados)
+    sid = g["pontos"]["sample_id"][0]
+    antes = g["pontos"]["classe"][0]
+    plataforma.patch(f"/api/amostras/{sid}", json={"contamination_status": None if antes != "sem_rotulo" else 1}, headers=H)
+    depois = plataforma.get(f"/api/graficos?empresa_id={emp['id']}").json()
+    assert depois["pontos"]["classe"][depois["pontos"]["sample_id"].index(sid)] != antes
+    assert plataforma.get("/api/graficos?qc=qualquer").status_code == 422

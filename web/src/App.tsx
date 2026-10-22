@@ -6,6 +6,7 @@ import InsightsOutlined from "@mui/icons-material/InsightsOutlined";
 import Logout from "@mui/icons-material/Logout";
 import MenuIcon from "@mui/icons-material/Menu";
 import PersonOutline from "@mui/icons-material/PersonOutline";
+import ScatterPlotOutlined from "@mui/icons-material/ScatterPlotOutlined";
 import ScienceOutlined from "@mui/icons-material/ScienceOutlined";
 import ShowChart from "@mui/icons-material/ShowChart";
 import {
@@ -21,6 +22,7 @@ import ColetaDetalhe from "./paginas/ColetaDetalhe";
 import Coletas from "./paginas/Coletas";
 import Conta from "./paginas/Conta";
 import Empresas from "./paginas/Empresas";
+import Graficos from "./paginas/Graficos";
 import Login from "./paginas/Login";
 import Modelos from "./paginas/Modelos";
 import NovaColeta from "./paginas/NovaColeta";
@@ -47,6 +49,7 @@ function Menu({ aoNavegar }: { aoNavegar?: () => void }) {
     { para: "/", nome: "Painel", Ic: DashboardOutlined },
     { para: "/coletas", nome: "Coletas", Ic: CloudUploadOutlined },
     { para: "/amostras", nome: "Amostras", Ic: ScienceOutlined },
+    { para: "/graficos", nome: "Gráficos", Ic: ScatterPlotOutlined },
     { para: "/modelos", nome: "Modelos", Ic: InsightsOutlined },
     { para: "/prever", nome: "Previsão rápida", Ic: ShowChart },
     { para: "/empresas", nome: "Empresas", Ic: BusinessOutlined },
@@ -127,6 +130,7 @@ export default function App() {
           <Route path="/amostras" element={<Amostras />} />
           <Route path="/amostras/:id" element={<AmostraDetalhe />} />
           <Route path="/prever" element={<Prever />} />
+          <Route path="/graficos" element={<Graficos />} />
           <Route path="/modelos" element={<Modelos />} />
           <Route path="/modelos/:id" element={<Modelos />} />
           <Route path="/empresas" element={<Empresas />} />

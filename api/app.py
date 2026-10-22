@@ -25,7 +25,7 @@ from fiep.orm import Usuario, fabrica_sessoes, migrar
 
 from .config import Config
 from .modelo import ModeloAtual
-from .rotas import amostras, auth, coletas, empresas, modelos, painel, previsao
+from .rotas import amostras, auth, coletas, empresas, graficos, modelos, painel, previsao
 from .rotas import usuarios as rotas_usuarios
 from .seguranca import CABECALHO_CSRF, LimiteTentativas
 
@@ -65,6 +65,8 @@ def criar_app(cfg: Config | None = None) -> FastAPI:
     app.state.modelo = ModeloAtual(cfg.modelos, cfg.config_pipeline)
     from .treinos import Treinos
     app.state.treinos = Treinos(cfg.resultados, cfg.modelos, app.state.sessoes, cfg.config_pipeline)
+    from fastapi.middleware.gzip import GZipMiddleware
+    app.add_middleware(GZipMiddleware, minimum_size=2000)     # respostas grandes (gráficos, curvas)
 
     @app.middleware("http")
     async def protecoes(request: Request, call_next):
@@ -85,7 +87,7 @@ def criar_app(cfg: Config | None = None) -> FastAPI:
             resp.headers.setdefault("Cache-Control", "no-store")
         return resp
 
-    for m in (auth, rotas_usuarios, empresas, coletas, amostras, previsao, painel, modelos):
+    for m in (auth, rotas_usuarios, empresas, coletas, amostras, previsao, painel, modelos, graficos):
         app.include_router(m.r)
 
     if WEB.exists():

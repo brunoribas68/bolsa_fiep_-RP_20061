@@ -195,6 +195,7 @@ Para os colaboradores enviarem as coletas das empresas. Detalhes: [`docs/PLATAFO
 |---|---|
 | Login | e-mail e senha (não há cadastro aberto: o admin cria as contas) |
 | Painel | amostras por resultado e por empresa, eletrodos completos, modelo em uso **com a acurácia no teste**, coletas recentes |
+| **Gráficos** | **linha**: voltamograma médio ± desvio por resultado (contaminada × não contaminada) em cada etapa ou na diferença última − anterior, ou por etapa do sensor; curvas individuais opcionais. **Dispersão**: um ponto por eletrodo, qualquer par de variáveis (corrente/potencial do pico, área, amplitude, largura de cada etapa, diferenças entre etapas, carga log10 UFC/mL), cor por resultado ou empresa, linha de tendência e correlação r; atalhos prontos (sinal × carga, etapa anterior × final…). Filtros por empresa, protocolo e QC; baixa PNG de cada gráfico e a tabela de descritores em CSV; clique num ponto abre a amostra |
 | **Modelos** | acurácia do modelo em uso (acurácia, acurácia balanceada, sensibilidade, especificidade, AUC, por amostra); abas **Comparação de algoritmos** (melhor de cada algoritmo + tabela ordenável de todas as combinações), **Gráficos** (ROC, matriz de confusão, fórmula SISSO…), **Carga** (regressão), **Histórico** (todos os modelos; admin escolhe qual usar) e **Treinos**; botão **Treinar modelos** escolhe os algoritmos de IA, as representações, as empresas e a divisão treino/validação/teste |
 | Nova coleta | empresa, data, uso no treino (sorteio ou treino/validação/teste) e as amostras: arraste a pasta do lote (uma subpasta por amostra) ou adicione amostra a amostra, com o resultado do plaqueamento e a carga |
 | Coletas | cada envio, quem enviou e quando; avisos (eletrodos sem as 3 etapas, QC) |
@@ -320,11 +321,13 @@ fiep/                   pacote: pipeline, banco e linha de comando
   experimentos.py         comparação de modelos e registro do melhor
   figuras.py              figuras e tabelas (notebook e artigo)
   model.py, predict.py    treino, registro e previsão (por eletrodo e por amostra, níveis)
+  registro.py             modelos treinados: métricas, comparação, troca do modelo em uso
+  graficos.py             dados da tela Gráficos (curvas médias e descritores por eletrodo)
   orm/, migracoes/        modelo do banco e migrations
   db.py, legado.py        funções do banco; conversão do banco antigo
   usuarios.py             contas (bcrypt)
   cli.py                  comando `fiep`
-api/                    backend FastAPI (login, coletas, amostras, previsão) + Dockerfile
+api/                    backend FastAPI (login, coletas, amostras, previsão, gráficos, modelos e treinos) + Dockerfile
 web/                    frontend React + Material UI (Vite + TypeScript)
 notebook/               entrega 1
 artigo/                 entrega 3
