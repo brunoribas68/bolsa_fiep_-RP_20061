@@ -151,8 +151,10 @@ def _num(v):
 
 
 def salvar_pacote(modelo, feats, grade, cfg, limiar, nome_modelo, metricas_cv, info,
-                  pasta_modelos="modelos", extras: dict | None = None, adicionais: dict | None = None):
-    """Grava modelo + grade + config + features + limiar em modelos/<id>/ e atualiza registro e ATUAL."""
+                  pasta_modelos="modelos", extras: dict | None = None, adicionais: dict | None = None,
+                  ativar: bool = True):
+    """Grava modelo + grade + config + features + limiar em modelos/<id>/ e atualiza o registro.
+    `ativar=True` faz dele o modelo em uso (modelos/ATUAL)."""
     run_id = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     base = Path(pasta_modelos)
     pasta = base / run_id
@@ -165,7 +167,7 @@ def salvar_pacote(modelo, feats, grade, cfg, limiar, nome_modelo, metricas_cv, i
         "id": pasta.name,
         "versao_pipeline": __version__,
         "commit": _git_commit(),
-        "criado_em": dt.datetime.now().isoformat(timespec="seconds"),
+        "criado_em": dt.datetime.now().astimezone().isoformat(timespec="seconds"),   # com fuso horário
         "modelo": nome_modelo,
         "limiar": float(limiar),
         "metricas_cv": {k: _num(v) for k, v in metricas_cv.items()},
@@ -183,7 +185,8 @@ def salvar_pacote(modelo, feats, grade, cfg, limiar, nome_modelo, metricas_cv, i
                    "roc_auc": cartao["metricas_cv"].get("roc_auc"), "n_amostras": cartao.get("n_amostras"),
                    "impressao_dados": cartao.get("impressao_dados")}]).to_csv(
         reg, mode="a", header=not reg.exists(), index=False)
-    (base / "ATUAL").write_text(cartao["id"])
+    if ativar:
+        (base / "ATUAL").write_text(cartao["id"])
     return pasta, cartao
 
 

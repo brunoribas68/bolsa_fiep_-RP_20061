@@ -1,6 +1,6 @@
 # Plataforma web (login, coletas, banco de amostras)
 
-Frontend em React (`web/`) e backend em FastAPI (`api/`), sobre o mesmo banco e o mesmo modelo da
+Frontend em React com Material UI (`web/`; tema em `web/src/tema.ts`) e backend em FastAPI (`api/`), sobre o mesmo banco e o mesmo modelo da
 pipeline. É por aqui que os colaboradores enviam as coletas feitas nas empresas.
 
 ## Primeira vez
@@ -32,7 +32,35 @@ Não há cadastro aberto: o admin cria as contas (página **Usuários** ou `fiep
 
 ## Telas
 
-- **Painel**: amostras por resultado e por empresa, réplicas completas, modelo em uso, coletas recentes.
+- **Painel**: amostras por resultado e por empresa, réplicas completas, modelo em uso (com a acurácia
+  no teste), coletas recentes.
+- **Gráficos**: gráficos dos dados do banco, com filtro por empresa, protocolo (rRNA 16S, NS1…) e
+  QC (só aprovadas ou todas):
+  - *Linha (voltamogramas)*: "por resultado" mostra a média ± 1 desvio padrão das contaminadas,
+    não contaminadas e sem resultado numa etapa ou na diferença última − anterior (o sinal que o
+    modelo usa); "por etapa" sobrepõe as etapas do sensor. Pode mostrar as curvas individuais
+    (até 120 eletrodos). As curvas passam pelo mesmo QC e pré-processamento do modelo.
+  - *Dispersão*: um ponto por eletrodo; eixos X e Y escolhidos entre os descritores de cada etapa
+    (corrente e potencial do pico, amplitude, área, largura a meia altura, corrente mínima), as
+    diferenças entre etapas e a carga (log10 UFC/mL). Cor (e forma) por resultado ou empresa,
+    linha de tendência com r de Pearson, legenda clicável para ocultar grupos, clique no ponto
+    abre a amostra.
+  - Botões para baixar cada gráfico em PNG (com título e legenda, para relatório/artigo) e a
+    tabela de descritores em CSV (abre no Excel).
+- **Modelos**: métricas do modelo em uso no conjunto de teste (acurácia, acurácia balanceada,
+  sensibilidade, especificidade, AUC e acurácia balanceada por amostra) e as abas:
+  - *Comparação de algoritmos*: o melhor resultado de cada algoritmo e a tabela de todas as
+    combinações representação × algoritmo (CV, validação e teste; a escolhida tem estrela);
+  - *Gráficos*: figuras do experimento (ROC, matriz de confusão, comparação, fórmula SISSO);
+  - *Carga*: regressores da carga (log10 UFC/mL);
+  - *Histórico*: todos os modelos treinados; o admin escolhe qual a plataforma usa;
+  - *Treinos*: andamento e resultado dos treinos iniciados pela plataforma.
+
+  **Treinar modelos** (colaborador ou admin) abre a escolha dos algoritmos de IA (agrupados por
+  família: lineares, SVM, vizinhos, árvores, rede neural, probabilísticos, SISSO), das
+  representações, das empresas, da divisão treino/validação/teste e se inclui os dados de
+  exemplo. O treino roda em segundo plano, um por vez. O modelo novo só entra em uso se o admin
+  marcar "usar o melhor modelo" ou clicar **Usar este modelo**.
 - **Nova coleta**: empresa, data, uso no treino (sorteio 50/25/25, ou fixo em treino/validação/teste) e as
   amostras. Arraste a pasta do lote (uma subpasta por amostra) ou adicione amostra por amostra. Para cada
   uma: código, resultado do plaqueamento e carga. Aceita `.nox` e Excel/CSV exportado do NOVA.
@@ -61,4 +89,8 @@ Em produção: rode atrás de HTTPS, defina `FIEP_SECRET` (`openssl rand -base64
 ## API
 
 Documentação interativa em `/docs`. Principais rotas: `/api/auth/*`, `/api/usuarios`, `/api/empresas`,
-`/api/coletas`, `/api/amostras`, `/api/medicoes/{id}`, `/api/prever`, `/api/excel`, `/api/painel`.
+`/api/coletas`, `/api/amostras`, `/api/medicoes/{id}`, `/api/prever`, `/api/excel`, `/api/painel`,
+`/api/graficos?empresa_id=&protocolo=&qc=aprovadas|todas` (curvas médias, curvas individuais e
+descritores por eletrodo), `/api/catalogo` (algoritmos e representações), `/api/modelos` (lista com métricas),
+`/api/modelos/{id}` (cartão + comparação + regressão + por amostra), `/api/modelos/{id}/figuras/{nome}`,
+`POST /api/modelos/{id}/ativar` (admin), `GET/POST /api/treinos` e `/api/treinos/{id}`.

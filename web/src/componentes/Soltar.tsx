@@ -1,3 +1,6 @@
+import FolderOpenOutlined from "@mui/icons-material/FolderOpenOutlined";
+import UploadFileOutlined from "@mui/icons-material/UploadFileOutlined";
+import { alpha, Box, Button, Stack, Typography } from "@mui/material";
 import { useRef, useState } from "react";
 
 export interface ArquivoComCaminho { arquivo: File; caminho: string }
@@ -33,9 +36,8 @@ export default function Soltar({ aoReceber, titulo, dica, pastas = true, compact
   };
 
   return (
-    <div>
-      <div className={`soltar${sobre ? " sobre" : ""}`} role="button" tabIndex={0}
-           style={compacto ? { padding: 10 } : undefined}
+    <Box>
+      <Box role="button" tabIndex={0}
            onClick={() => arquivos.current?.click()}
            onKeyDown={e => (e.key === "Enter" || e.key === " ") && arquivos.current?.click()}
            onDragOver={e => { e.preventDefault(); setSobre(true); }}
@@ -46,10 +48,19 @@ export default function Soltar({ aoReceber, titulo, dica, pastas = true, compact
              const itens = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry()).filter(Boolean) as FileSystemEntry[];
              for (const it of itens) await lerEntrada(it, "", saida);
              aoReceber(saida);
+           }}
+           sx={{
+             border: "1.5px dashed", borderRadius: 2, cursor: "pointer", textAlign: "center",
+             p: compacto ? 1.5 : 3, transition: "all .15s",
+             borderColor: sobre ? "primary.main" : "divider",
+             bgcolor: t => (sobre ? alpha(t.palette.primary.main, .08) : t.palette.action.hover),
+             color: sobre ? "primary.main" : "text.secondary",
+             "&:hover": { borderColor: "primary.main" },
            }}>
-        <strong>{titulo}</strong>
-        {dica && <span className="pequeno">{dica}</span>}
-      </div>
+        {!compacto && <UploadFileOutlined sx={{ fontSize: 34, mb: .5, color: "primary.main" }} />}
+        <Typography fontWeight={600} color="text.primary" variant={compacto ? "body2" : "body1"}>{titulo}</Typography>
+        {dica && <Typography variant="body2">{dica}</Typography>}
+      </Box>
       <input ref={arquivos} type="file" multiple hidden accept=".nox,.xlsx,.xls,.csv,.txt"
              onChange={e => { deInput(e.target.files); e.target.value = ""; }} />
       {pastas && (
@@ -57,12 +68,12 @@ export default function Soltar({ aoReceber, titulo, dica, pastas = true, compact
           <input ref={pasta} type="file" multiple hidden
                  {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
                  onChange={e => { deInput(e.target.files); e.target.value = ""; }} />
-          <div className="acoes" style={{ marginTop: 8 }}>
-            <button type="button" className="btn peq" onClick={() => arquivos.current?.click()}>Escolher arquivos</button>
-            <button type="button" className="btn peq" onClick={() => pasta.current?.click()}>Escolher pasta</button>
-          </div>
+          <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+            <Button size="small" variant="outlined" startIcon={<UploadFileOutlined />} onClick={() => arquivos.current?.click()}>Escolher arquivos</Button>
+            <Button size="small" variant="outlined" startIcon={<FolderOpenOutlined />} onClick={() => pasta.current?.click()}>Escolher pasta</Button>
+          </Stack>
         </>
       )}
-    </div>
+    </Box>
   );
 }

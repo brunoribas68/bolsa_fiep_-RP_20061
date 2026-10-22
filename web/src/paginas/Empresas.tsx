@@ -1,7 +1,15 @@
+import AddIcon from "@mui/icons-material/Add";
+import EditOutlined from "@mui/icons-material/EditOutlined";
+import {
+  Alert, Box, Button, Card, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Link as MuiLink, Stack,
+  Table, TableBody, TableCell, TableHead, TableRow, TextField, Tooltip,
+} from "@mui/material";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { useAvisos } from "../componentes/avisos";
+import { Cabecalho } from "../componentes/comum";
 import type { Empresa } from "../tipos";
 import { useCarregar } from "../usar";
 
@@ -9,48 +17,57 @@ const VAZIA = { nome: "", cidade: "", segmento: "", observacoes: "" };
 
 export default function Empresas() {
   const { pode } = useAuth();
+  const avisar = useAvisos();
   const { dados, erro, recarregar } = useCarregar<Empresa[]>("/api/empresas");
   const [f, setF] = useState(VAZIA);
   const [editando, setEditando] = useState<number | null>(null);
-  const [msg, setMsg] = useState("");
+  const [aberto, setAberto] = useState(false);
 
+  const abrir = (e?: Empresa) => {
+    setEditando(e?.id ?? null);
+    setF(e ? { nome: e.nome, cidade: e.cidade || "", segmento: e.segmento || "", observacoes: e.observacoes || "" } : VAZIA);
+    setAberto(true);
+  };
   async function salvar() {
-    setMsg("");
     try {
-      if (editando) await api.patch(`/api/empresas/${editando}`, f);
-      else await api.post("/api/empresas", f);
-      setF(VAZIA); setEditando(null); recarregar();
-    } catch (e) { setMsg((e as Error).message); }
+      if (editando) await api.patch(`/api/empresas/${editando}`, f); else await api.post("/api/empresas", f);
+      avisar(editando ? "Empresa atualizada." : "Empresa cadastrada.");
+      setAberto(false); recarregar();
+    } catch (e) { avisar((e as Error).message, "error"); }
   }
   return (
     <>
-      <div className="cabecalho"><div><h1>Empresas</h1><p>Empresas validadoras onde as coletas são feitas.</p></div></div>
-      <div className="pilha">
-        {pode("editar") && (
-          <div className="cartao">
-            <h2>{editando ? "Editar empresa" : "Cadastrar empresa"}</h2>
-            <div className="linha-campos">
-              <label className="campo">Nome<input value={f.nome} onChange={e => setF({ ...f, nome: e.target.value })} maxLength={160} /></label>
-              <label className="campo">Cidade<input value={f.cidade} onChange={e => setF({ ...f, cidade: e.target.value })} /></label>
-              <label className="campo">Segmento<input value={f.segmento} onChange={e => setF({ ...f, segmento: e.target.value })} placeholder="ex.: laticínios" /></label>
-            </div>
-            <div className="acoes" style={{ marginTop: 12 }}>
-              <button className="btn prim" disabled={!f.nome.trim()} onClick={salvar}>{editando ? "Salvar" : "Cadastrar"}</button>
-              {editando && <button className="btn" onClick={() => { setEditando(null); setF(VAZIA); }}>Cancelar</button>}
-              {msg && <span className="erro">{msg}</span>}
-            </div>
-          </div>)}
-        {erro && <div className="erro">{erro}</div>}
-        <div className="cartao tabela"><table>
-          <thead><tr><th>Empresa</th><th>Cidade</th><th>Segmento</th><th className="num">Coletas</th><th className="num">Amostras</th><th /></tr></thead>
-          <tbody>{dados?.map(e => (
-            <tr key={e.id}><td>{e.nome}</td><td>{e.cidade || "—"}</td><td>{e.segmento || "—"}</td>
-              <td className="num">{e.n_coletas}</td><td className="num"><Link to={`/amostras?empresa_id=${e.id}`}>{e.n_amostras}</Link></td>
-              <td>{pode("editar") && <button className="btn peq" onClick={() => { setEditando(e.id);
-                setF({ nome: e.nome, cidade: e.cidade || "", segmento: e.segmento || "", observacoes: e.observacoes || "" }); }}>Editar</button>}</td></tr>))}
-            {dados && !dados.length && <tr><td colSpan={6} className="vazio">Nenhuma empresa cadastrada.</td></tr>}
-          </tbody></table></div>
-      </div>
+      <Cabecalho titulo="Empresas" sub="Empresas validadoras onde as coletas são feitas."
+                 acoes={pode("editar") && <Button variant="contained" startIcon={<AddIcon />} onClick={() => abrir()}>Cadastrar empresa</Button>} />
+      {erro && <Alert severity="error">{erro}</Alert>}
+      <Card><Box sx={{ overflowX: "auto" }}>
+        <Table size="small">
+          <TableHead><TableRow><TableCell>Empresa</TableCell><TableCell>Cidade</TableCell><TableCell>Segmento</TableCell>
+            <TableCell align="right">Coletas</TableCell><TableCell align="right">Amostras</TableCell><TableCell /></TableRow></TableHead>
+          <TableBody>{dados?.map(e => (
+            <TableRow key={e.id} hover><TableCell sx={{ fontWeight: 550 }}>{e.nome}</TableCell><TableCell>{e.cidade || "—"}</TableCell>
+              <TableCell>{e.segmento || "—"}</TableCell><TableCell align="right">{e.n_coletas}</TableCell>
+              <TableCell align="right"><MuiLink component={Link} to={`/amostras?empresa_id=${e.id}`}>{e.n_amostras}</MuiLink></TableCell>
+              <TableCell align="right">{pode("editar") && <Tooltip title="Editar"><IconButton size="small" onClick={() => abrir(e)}><EditOutlined fontSize="small" /></IconButton></Tooltip>}</TableCell></TableRow>))}
+            {dados && !dados.length && <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4, color: "text.secondary" }}>Nenhuma empresa cadastrada.</TableCell></TableRow>}
+          </TableBody>
+        </Table>
+      </Box></Card>
+      <Dialog open={aberto} onClose={() => setAberto(false)} fullWidth maxWidth="sm">
+        <DialogTitle>{editando ? "Editar empresa" : "Cadastrar empresa"}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField label="Nome" value={f.nome} onChange={e => setF({ ...f, nome: e.target.value })} autoFocus inputProps={{ maxLength: 160 }} />
+            <TextField label="Cidade" value={f.cidade} onChange={e => setF({ ...f, cidade: e.target.value })} />
+            <TextField label="Segmento" value={f.segmento} onChange={e => setF({ ...f, segmento: e.target.value })} placeholder="ex.: laticínios" />
+            <TextField label="Observações" value={f.observacoes} multiline minRows={2} onChange={e => setF({ ...f, observacoes: e.target.value })} />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setAberto(false)}>Cancelar</Button>
+          <Button variant="contained" disabled={!f.nome.trim()} onClick={salvar}>{editando ? "Salvar" : "Cadastrar"}</Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

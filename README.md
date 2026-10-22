@@ -148,6 +148,8 @@ fiep db importar --entrada dados             # grava no banco (QC + cópia em Ex
 fiep db resumo                               # contagens
 fiep db sql "SELECT * FROM v_replicatas WHERE n_aprovadas < 3"   # eletrodos sem as 3 etapas
 fiep experimento --artigo                    # treino/validação/teste, compara modelos, registra o melhor
+fiep modelos listar                          # acurácia de cada modelo treinado; * = o que está em uso
+fiep modelos mostrar                         # métricas do modelo em uso e a comparação de algoritmos
 fiep prever --entrada nova_coleta/ --saida resultado.csv          # por amostra e por eletrodo
 fiep servir                                  # plataforma web
 ```
@@ -166,7 +168,11 @@ Sem instalar o pacote: `python -m fiep <comando>` na raiz do repositório.
 | `fiep db sql` | consulta livre (views: `v_medicoes`, `v_replicatas`, `v_qc_atual`, `v_predicoes`) | `fiep db sql "SELECT ..." [--saida x.csv]` |
 | `fiep db exportar` | banco inteiro para Excel (uma aba por tabela) ou CSV | `fiep db exportar --saida dados/banco.xlsx` · `--formato csv --saida pasta/` |
 | `fiep db exemplo` | carrega / remove o case de demonstração | `fiep db exemplo` · `fiep db exemplo --remover` |
-| `fiep experimento` | divide 50/25/25, compara 5 representações × 12 modelos, escolhe na validação, mede no teste, registra o melhor | `fiep experimento [--artigo] [--rapido]` · `fiep experimento --db dados/fiep.db [--filtro "empresa_id = 2"] [--filtro-teste "..."]` |
+| `fiep experimento` | divide 50/25/25, compara 5 representações × 14 algoritmos (ou só os escolhidos), escolhe na validação, mede no teste, registra o melhor | `fiep experimento [--artigo] [--rapido]` · `fiep experimento --db dados/fiep.db [--filtro "empresa_id = 2"] [--filtro-teste "..."] [--com-exemplo]` · `fiep experimento --algoritmos mlp,random_forest,svm_rbf --variantes dif_curva [--nao-ativar]` |
+| `fiep modelos listar` | todos os modelos treinados com acurácia, acurácia balanceada, AUC e por amostra no teste (`*` = em uso) | `fiep modelos listar` |
+| `fiep modelos mostrar` | métricas de um modelo e a comparação de todos os algoritmos testados | `fiep modelos mostrar [--id <id>]` (sem `--id`: o modelo em uso) |
+| `fiep modelos ativar` | troca o modelo usado pela plataforma e pelo `fiep prever` | `fiep modelos ativar --id <id>` |
+| `fiep modelos catalogo` | algoritmos e representações disponíveis (nomes para `--algoritmos` / `--variantes`) | `fiep modelos catalogo` |
 | `fiep prever` | classifica dados novos com o modelo registrado | `fiep prever --entrada pasta/ [--saida r.csv] [--db] [--modelo modelos/<id>]` |
 | `fiep servir` | plataforma web + API | `fiep servir [--host 0.0.0.0] [--porta 8000] [--db URL] [--modelos pasta]` |
 | `fiep usuario` | contas: criar, listar, redefinir senha, desativar | `fiep usuario criar --email x@y --nome "..." --papel admin\|colaborador\|leitor` · `fiep usuario listar` · `fiep usuario senha --email x@y` · `fiep usuario desativar --email x@y` |
@@ -188,7 +194,9 @@ Para os colaboradores enviarem as coletas das empresas. Detalhes: [`docs/PLATAFO
 | Tela | O que faz |
 |---|---|
 | Login | e-mail e senha (não há cadastro aberto: o admin cria as contas) |
-| Painel | amostras por resultado e por empresa, eletrodos completos, modelo em uso, coletas recentes |
+| Painel | amostras por resultado e por empresa, eletrodos completos, modelo em uso **com a acurácia no teste**, coletas recentes |
+| **Gráficos** | **linha**: voltamograma médio ± desvio por resultado (contaminada × não contaminada) em cada etapa ou na diferença última − anterior, ou por etapa do sensor; curvas individuais opcionais. **Dispersão**: um ponto por eletrodo, qualquer par de variáveis (corrente/potencial do pico, área, amplitude, largura de cada etapa, diferenças entre etapas, carga log10 UFC/mL), cor por resultado ou empresa, linha de tendência e correlação r; atalhos prontos (sinal × carga, etapa anterior × final…). Filtros por empresa, protocolo e QC; baixa PNG de cada gráfico e a tabela de descritores em CSV; clique num ponto abre a amostra |
+| **Modelos** | acurácia do modelo em uso (acurácia, acurácia balanceada, sensibilidade, especificidade, AUC, por amostra); abas **Comparação de algoritmos** (melhor de cada algoritmo + tabela ordenável de todas as combinações), **Gráficos** (ROC, matriz de confusão, fórmula SISSO…), **Carga** (regressão), **Histórico** (todos os modelos; admin escolhe qual usar) e **Treinos**; botão **Treinar modelos** escolhe os algoritmos de IA, as representações, as empresas e a divisão treino/validação/teste |
 | Nova coleta | empresa, data, uso no treino (sorteio ou treino/validação/teste) e as amostras: arraste a pasta do lote (uma subpasta por amostra) ou adicione amostra a amostra, com o resultado do plaqueamento e a carga |
 | Coletas | cada envio, quem enviou e quando; avisos (eletrodos sem as 3 etapas, QC) |
 | Amostras | busca e filtros; rótulo e carga editáveis na tabela |
@@ -198,10 +206,17 @@ Para os colaboradores enviarem as coletas das empresas. Detalhes: [`docs/PLATAFO
 | Usuários (admin) | criar contas, perfil, desativar, redefinir senha |
 | Minha conta | trocar a própria senha |
 
-Perfis: **admin** (tudo), **colaborador** (envia e edita dados), **leitor** (consulta e prevê).
+Perfis: **admin** (tudo, inclusive trocar o modelo em uso), **colaborador** (envia e edita dados,
+inicia treinos), **leitor** (consulta e prevê).
 
-Desenvolvimento do frontend: `fiep servir` num terminal e `cd web && npm run dev` noutro
-(http://localhost:5173). Documentação da API: http://127.0.0.1:8000/docs.
+Treino pela plataforma: roda em segundo plano (um por vez; o andamento aparece na aba Treinos).
+O modelo novo só passa a ser usado se o admin marcar "Usar o melhor modelo" ao treinar ou clicar
+**Usar este modelo** depois — assim dá para testar vários algoritmos sem mexer no que está em uso.
+
+Frontend em React + **Material UI** (MUI), com tema claro/escuro automático e layout para celular
+(o menu lateral vira gaveta). Desenvolvimento: `fiep servir` num terminal e `cd web && npm run dev`
+noutro (http://localhost:5173); o tema fica em `web/src/tema.ts` e os componentes comuns em
+`web/src/componentes/comum.tsx`. Documentação da API: http://127.0.0.1:8000/docs.
 
 ### Variáveis de ambiente
 
@@ -211,7 +226,8 @@ Desenvolvimento do frontend: `fiep servir` num terminal e `cd web && npm run dev
 | `FIEP_SECRET` | gerada em `dados/.segredo` | chave das sessões — **defina em produção** (`openssl rand -base64 48`) |
 | `FIEP_COOKIE_SEGURO` | `0` | `1` = cookie só por HTTPS (produção) |
 | `FIEP_SESSAO_HORAS` | `8` | duração do login |
-| `FIEP_MODELOS` | `modelos` | pasta do modelo em uso (`modelos/ATUAL`) |
+| `FIEP_MODELOS` | `modelos` | pasta dos modelos treinados e do modelo em uso (`modelos/ATUAL`) |
+| `FIEP_RESULTADOS` | `resultados` | tabelas e figuras de cada experimento (comparação mostrada na tela Modelos) e o estado dos treinos |
 | `FIEP_ARMAZENAMENTO` | `dados/recebidos` | onde ficam os arquivos enviados |
 | `FIEP_DADOS_EXEMPLO` | `1` | carregar o case de exemplo ao criar o banco |
 | `FIEP_ADMIN_EMAIL` / `FIEP_ADMIN_SENHA` | — | cria o primeiro admin se não houver usuários (Docker) |
@@ -232,8 +248,11 @@ docker run -p 8000:8000 -e FIEP_SECRET="..." -e FIEP_ADMIN_EMAIL=voce@exemplo.or
 
 - **Representações** (5): descritores de pico + diferenças entre etapas; curva de diferença
   completa; idem com linha de base; idem sem suavização; só a etapa final.
-- **Modelos** (12): regressão logística (L2 em 3 intensidades e L1), LDA, SVM RBF (2), kNN, floresta
-  aleatória, extra trees, gradient boosting e **SISSO** simplificado (fórmula explícita).
+- **Algoritmos** (14): regressão logística (L2 em 3 intensidades e L1), LDA, SVM RBF (2), kNN, floresta
+  aleatória, extra trees, gradient boosting, **rede neural MLP**, naive Bayes e **SISSO** simplificado
+  (fórmula explícita). Lista com nomes: `fiep modelos catalogo`. Para testar só alguns:
+  `fiep experimento --algoritmos mlp,svm_rbf --variantes dif_curva` ou o botão **Treinar modelos**
+  na tela Modelos. Para incluir outro algoritmo, acrescente-o em `fiep/catalogo.py`.
 - **Protocolo**: treino 50% (validação cruzada agrupada por amostra → limiar de Youden), escolha na
   validação 25%, re-treino com treino + validação e avaliação **uma única vez** no teste 25%.
 - **Resultado por amostra**: média das probabilidades dos eletrodos aprovados no QC, com a
@@ -245,7 +264,8 @@ docker run -p 8000:8000 -e FIEP_SECRET="..." -e FIEP_ADMIN_EMAIL=voce@exemplo.or
   (descontada a amplitude do pulso na SWV), poucos pontos, corrente fora do padrão do lote.
 
 Saídas de `fiep experimento`: `resultados/<id>/` (tabelas, figuras, `resumo.json`) e o modelo em
-`modelos/<id>/` (passa a ser o usado pela plataforma). Com `--artigo`, figuras, tabelas e números
+`modelos/<id>/` (passa a ser o usado pela plataforma, a menos que use `--nao-ativar`). Onde ver a
+acurácia e comparar: tela **Modelos** da plataforma, ou `fiep modelos listar` / `fiep modelos mostrar`. Com `--artigo`, figuras, tabelas e números
 vão para `artigo/gerado/`. Como funciona em detalhe: [`docs/PIPELINE.md`](docs/PIPELINE.md).
 
 ---
@@ -301,12 +321,14 @@ fiep/                   pacote: pipeline, banco e linha de comando
   experimentos.py         comparação de modelos e registro do melhor
   figuras.py              figuras e tabelas (notebook e artigo)
   model.py, predict.py    treino, registro e previsão (por eletrodo e por amostra, níveis)
+  registro.py             modelos treinados: métricas, comparação, troca do modelo em uso
+  graficos.py             dados da tela Gráficos (curvas médias e descritores por eletrodo)
   orm/, migracoes/        modelo do banco e migrations
   db.py, legado.py        funções do banco; conversão do banco antigo
   usuarios.py             contas (bcrypt)
   cli.py                  comando `fiep`
-api/                    backend FastAPI (login, coletas, amostras, previsão) + Dockerfile
-web/                    frontend React (Vite + TypeScript)
+api/                    backend FastAPI (login, coletas, amostras, previsão, gráficos, modelos e treinos) + Dockerfile
+web/                    frontend React + Material UI (Vite + TypeScript)
 notebook/               entrega 1
 artigo/                 entrega 3
 configs/default.toml    todos os parâmetros (protocolos, QC, divisão, níveis, modelos)

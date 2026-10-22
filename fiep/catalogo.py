@@ -12,7 +12,9 @@ from sklearn.ensemble import (ExtraTreesClassifier, ExtraTreesRegressor, HistGra
                               HistGradientBoostingRegressor, RandomForestClassifier, RandomForestRegressor)
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression, RidgeCV
+from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC, SVR
@@ -57,6 +59,9 @@ def classificadores(seed: int = 42, rapido: bool = False) -> dict:
                                                   random_state=seed, n_jobs=-1), escalar=False),
         "hist_gb": HistGradientBoostingClassifier(learning_rate=0.05, max_iter=300, class_weight="balanced",
                                                   random_state=seed),
+        "mlp": _pipe(MLPClassifier(hidden_layer_sizes=(64, 32), alpha=1e-3, max_iter=2000, early_stopping=True,
+                                   random_state=seed)),
+        "naive_bayes": _pipe(GaussianNB()),
         "sisso": SissoClassificador(n_sis=25, max_dim=2),
     }
     if rapido:
@@ -72,7 +77,37 @@ def regressores(seed: int = 42, rapido: bool = False) -> dict:
         "random_forest": _pipe(RandomForestRegressor(n_estimators=500, random_state=seed, n_jobs=-1), escalar=False),
         "extra_trees": _pipe(ExtraTreesRegressor(n_estimators=500, random_state=seed, n_jobs=-1), escalar=False),
         "hist_gb": HistGradientBoostingRegressor(learning_rate=0.05, max_iter=300, random_state=seed),
+        "mlp": _pipe(MLPRegressor(hidden_layer_sizes=(64, 32), alpha=1e-3, max_iter=3000, early_stopping=True,
+                                  random_state=seed)),
     }
     if rapido:
         return {k: todos[k] for k in ("ridge", "random_forest")}
     return todos
+
+
+# Descrições para a plataforma e a documentação (nome -> (família, texto)).
+DESCRICAO_CLASSIFICADORES = {
+    "log_reg": ("Linear", "Regressão logística (L2, C=1)"),
+    "log_reg_C0.1": ("Linear", "Regressão logística mais regularizada (C=0,1)"),
+    "log_reg_C0.01": ("Linear", "Regressão logística muito regularizada (C=0,01)"),
+    "log_reg_l1": ("Linear", "Regressão logística L1 (seleciona características)"),
+    "lda": ("Linear", "Análise discriminante linear com encolhimento"),
+    "svm_rbf": ("Kernel", "SVM com núcleo RBF (C=1), calibrada"),
+    "svm_rbf_C10": ("Kernel", "SVM com núcleo RBF (C=10), calibrada"),
+    "knn": ("Vizinhança", "k vizinhos mais próximos (k=7)"),
+    "random_forest": ("Árvores", "Floresta aleatória (500 árvores)"),
+    "extra_trees": ("Árvores", "Extra trees (500 árvores)"),
+    "hist_gb": ("Árvores", "Gradient boosting por histogramas"),
+    "mlp": ("Rede neural", "Perceptron multicamadas (64-32), parada antecipada"),
+    "naive_bayes": ("Probabilístico", "Naive Bayes gaussiano"),
+    "sisso": ("Interpretável", "SISSO simplificado: fórmula explícita com 1-2 descritores"),
+}
+DESCRICAO_REGRESSORES = {
+    "ridge": "Ridge (regularização escolhida por validação)",
+    "pls": "Mínimos quadrados parciais (5 componentes)",
+    "svr": "Regressão por vetores de suporte",
+    "random_forest": "Floresta aleatória",
+    "extra_trees": "Extra trees",
+    "hist_gb": "Gradient boosting por histogramas",
+    "mlp": "Rede neural (perceptron multicamadas)",
+}

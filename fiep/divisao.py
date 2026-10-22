@@ -219,3 +219,31 @@ def de_pastas(base: str | Path = "dados", cfg: dict | None = None) -> Divisao:
         log.warning("Sem dados em %s: usando %s (demonstração).", base, exemplo)
         soltos = ingerir(exemplo)
     return montar(soltos, fixos, cfg)
+
+
+def de_banco(s, cfg: dict | None = None, onde: str | None = None, params: tuple = (),
+             filtros_fixos: dict[str, str] | None = None, com_exemplo: bool = False) -> tuple[Divisao, str]:
+    """Monta a divisão a partir do banco. Devolve (divisão, aviso).
+
+    O conjunto gravado em cada amostra (treino/validacao/teste) e os `filtros_fixos` (SQL por
+    conjunto) fixam amostras; o resto é sorteado. Os dados de exemplo ficam de fora quando há
+    dados reais (salvo `com_exemplo`)."""
+    from . import db
+    todos = db.carregar(s, onde, params)
+    aviso = ""
+    ex = db.id_empresa_exemplo(s)
+    med = todos.medicoes
+    if ex is not None and "empresa_id" in med and (med["empresa_id"] != ex).any() and not com_exemplo:
+        todos = subconjunto(todos, set(med.loc[med["empresa_id"] != ex, "sample_id"].dropna()))
+        aviso = ("Dados de exemplo deixados de fora (use --com-exemplo para incluir ou "
+                 "`fiep db exemplo --remover` para apagá-los).")
+    if todos is None or not len(todos.medicoes):
+        raise ValueError("Nenhuma medição no banco com esse filtro.")
+    med = todos.medicoes
+    ids = {k: set(med.loc[med["conjunto"] == k, "sample_id"]) if "conjunto" in med else set() for k in CONJUNTOS}
+    for k, f in (filtros_fixos or {}).items():
+        if f:
+            ids[k] |= set(db.carregar(s, f).medicoes["sample_id"])
+    fixos = {k: subconjunto(todos, v) for k, v in ids.items() if v}
+    ja = set().union(*ids.values())
+    return montar(subconjunto(todos, set(med["sample_id"].dropna()) - ja), fixos, cfg), aviso

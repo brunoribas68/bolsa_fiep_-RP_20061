@@ -1,4 +1,6 @@
+import { Alert, Box, Button, Card, CardContent, Stack, TextField, Typography } from "@mui/material";
 import { useState, type FormEvent } from "react";
+import { Marca } from "../App";
 import { useAuth } from "../auth";
 
 export default function Login() {
@@ -17,29 +19,34 @@ export default function Login() {
   }
 
   return (
-    <div className="tela-login">
-      <div className="cartao">
-        <div className="marca" style={{ padding: 0 }}>
-          <svg width="34" height="34" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--primaria)" />
-            <path d="M5 20c4 0 5-9 9-9s4 11 8 11 4-6 5-6" stroke="#fff" strokeWidth="2.6" fill="none" strokeLinecap="round" /></svg>
-          <div>Plataforma FIEP<small>Monitoramento microbiológico por voltametria</small></div>
-        </div>
-        <form onSubmit={enviar}>
-          <label className="campo">E-mail
-            <input type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} autoFocus />
-          </label>
-          <label className="campo">Senha
-            <input type="password" autoComplete="current-password" required value={senha} onChange={e => setSenha(e.target.value)} />
-          </label>
-          {erro && <div className="erro" role="alert">{erro}</div>}
-          <button className="btn prim" disabled={enviando} style={{ justifyContent: "center" }}>
-            {enviando ? "Entrando…" : "Entrar"}
-          </button>
-          <p className="mudo pequeno" style={{ margin: 0 }}>
-            Não tem acesso? Peça ao administrador do projeto para criar sua conta.
-          </p>
-        </form>
-      </div>
-    </div>
+    <Box sx={{ minHeight: "100vh", display: "grid", placeItems: "center", p: 2,
+               background: t => t.palette.mode === "light"
+                 ? "radial-gradient(1200px 600px at 10% -10%, #dce8f8 0%, transparent 60%), #f4f6f9"
+                 : "radial-gradient(1200px 600px at 10% -10%, #1c2a3d 0%, transparent 60%), #0f141a" }}>
+      <Card sx={{ width: "min(420px, 100%)", boxShadow: "0 10px 40px rgba(16,24,40,.08)" }}>
+        <CardContent sx={{ p: 4 }}>
+          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ color: "primary.main", mb: 3 }}>
+            <Marca tamanho={40} />
+            <Box sx={{ color: "text.primary" }}>
+              <Typography variant="h6">Plataforma FIEP</Typography>
+              <Typography variant="body2" color="text.secondary">Monitoramento microbiológico por voltametria</Typography>
+            </Box>
+          </Stack>
+          <Stack component="form" spacing={2} onSubmit={enviar}>
+            <TextField label="E-mail" type="email" autoComplete="username" required autoFocus value={email}
+                       onChange={e => setEmail(e.target.value)} size="medium" />
+            <TextField label="Senha" type="password" autoComplete="current-password" required value={senha}
+                       onChange={e => setSenha(e.target.value)} size="medium" />
+            {erro && <Alert severity="error" role="alert">{erro}</Alert>}
+            <Button type="submit" variant="contained" size="large" disabled={enviando}>
+              {enviando ? "Entrando…" : "Entrar"}
+            </Button>
+            <Typography variant="body2" color="text.secondary">
+              Não tem acesso? Peça ao administrador do projeto para criar sua conta.
+            </Typography>
+          </Stack>
+        </CardContent>
+      </Card>
+    </Box>
   );
 }

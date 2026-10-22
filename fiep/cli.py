@@ -88,35 +88,23 @@ def _prever(a):
 
 def _experimento(a):
     import shutil
-    from .divisao import CONJUNTOS, de_pastas, montar, subconjunto
+    from .divisao import CONJUNTOS, de_pastas
     from .experimentos import rodar
     cfg = _cfg(a)
     if a.db:
         from . import db
+        from .divisao import de_banco
         con = db.conectar(a.db)
-        todos = db.carregar(con, a.filtro)
-        # dados de exemplo só entram quando não há outros (demonstração)
-        ex = db.id_empresa_exemplo(con)
-        if ex is not None and "empresa_id" in todos.medicoes and (todos.medicoes["empresa_id"] != ex).any() \
-                and not a.com_exemplo:
-            reais = set(todos.medicoes.loc[todos.medicoes["empresa_id"] != ex, "sample_id"].dropna())
-            todos = subconjunto(todos, reais)
-            print(f"Dados de exemplo deixados de fora (use --com-exemplo para incluir ou "
-                  f"`fiep db exemplo --remover` para apagá-los).")
-        med = todos.medicoes
-        # conjunto definido na importação (pastas treino/validacao/teste) e/ou por filtro SQL
-        ids = {k: set(med.loc[med["conjunto"] == k, "sample_id"]) if "conjunto" in med else set()
-               for k in CONJUNTOS}
-        for k in CONJUNTOS:
-            if getattr(a, f"filtro_{k}"):
-                ids[k] |= set(db.carregar(con, getattr(a, f"filtro_{k}")).medicoes["sample_id"])
-        fixos = {k: subconjunto(todos, v) for k, v in ids.items() if v}
-        ja = set().union(*ids.values())
-        div = montar(subconjunto(todos, set(med["sample_id"].dropna()) - ja), fixos, cfg)
+        div, aviso = de_banco(con, cfg, a.filtro, filtros_fixos={k: getattr(a, f"filtro_{k}") for k in CONJUNTOS},
+                              com_exemplo=a.com_exemplo)
+        if aviso:
+            print(aviso)
     else:
         div = de_pastas(a.dados, cfg)
     print(div.descricao())
-    r = rodar(div, cfg, saida=a.saida, pasta_modelos=a.modelos, rapido=a.rapido)
+    lista = lambda t: [x.strip() for x in t.split(",") if x.strip()] if t else None  # noqa: E731
+    r = rodar(div, cfg, saida=a.saida, pasta_modelos=a.modelos, rapido=a.rapido, algoritmos=lista(a.algoritmos),
+              variantes=lista(a.variantes), ativar=not a.nao_ativar)
     cols = ["posicao", "variante", "modelo", "cv_balanced_accuracy", "cv_ba_desvio", "val_balanced_accuracy",
             "val_roc_auc", "teste_balanced_accuracy", "teste_roc_auc"]
     print(f"\nTop 10 (ordenado por: {r['resumo']['criterio_escolha']}):")
@@ -195,6 +183,52 @@ def _planilha(a):
               f"sample_log10_mean_cfu_ml nas {len(faltam)} linha(s) de {am_path}.")
         print("Dica: pastas chamadas contaminada/ e nao_contaminada/ (ou positivo/negativo) já preenchem o rótulo.")
     print("Depois:\n  fiep db importar --entrada dados\n  fiep experimento --artigo")
+
+
+def _modelos(a):
+    from . import registro
+    if a.acao == "catalogo":
+        from .catalogo import DESCRICAO_CLASSIFICADORES, DESCRICAO_REGRESSORES
+        from .experimentos import DESCRICAO_VARIANTES
+        print("Classificadores (--algoritmos):")
+        for k, (fam, txt) in DESCRICAO_CLASSIFICADORES.items():
+            print(f"  {k:15s} {fam:15s} {txt}")
+        print("\nRepresentações (--variantes):")
+        for k, txt in DESCRICAO_VARIANTES.items():
+            print(f"  {k:24s} {txt}")
+        print("\nRegressores da carga (todos são comparados):")
+        for k, txt in DESCRICAO_REGRESSORES.items():
+            print(f"  {k:15s} {txt}")
+        return
+    if a.acao == "listar":
+        lista = registro.listar(a.modelos)
+        if not lista:
+            print(f"Nenhum modelo em {a.modelos}/: rode fiep experimento.")
+            return
+        import pandas as pd
+        df = pd.DataFrame(lista)[["em_uso", "id", "modelo", "protocolo", "teste_acuracia", "teste_balanced_accuracy",
+                                  "teste_roc_auc", "teste_amostra_balanced_accuracy", "n_amostras"]]
+        df["em_uso"] = df["em_uso"].map({True: "*", False: ""})
+        print(df.round(3).to_string(index=False))
+        print("\n* = em uso. Detalhes: fiep modelos mostrar --id <id> · trocar: fiep modelos ativar --id <id>")
+        return
+    if not a.id:
+        raise ValueError("informe --id (veja os ids com fiep modelos listar)")
+    if a.acao == "ativar":
+        registro.ativar(a.id, a.modelos)
+        print(f"Modelo {a.id} em uso (plataforma e fiep prever).")
+    elif a.acao == "mostrar":
+        d = registro.detalhe(a.id, a.modelos, a.resultados)
+        for k in ("id", "modelo", "protocolo", "n_amostras", "limiar", "teste_acuracia", "teste_balanced_accuracy",
+                  "teste_sensibilidade", "teste_especificidade", "teste_roc_auc", "teste_amostra_balanced_accuracy",
+                  "validacao_balanced_accuracy", "cv_balanced_accuracy", "regressor"):
+            v = d.get(k)
+            print(f"{k:32s} {round(v, 3) if isinstance(v, float) else v}")
+        if d["comparacao"]:
+            import pandas as pd
+            cols = ["variante", "modelo", "val_balanced_accuracy", "teste_balanced_accuracy", "teste_roc_auc"]
+            print("\nComparação (10 primeiras):")
+            print(pd.DataFrame(d["comparacao"])[cols].head(10).round(3).to_string(index=False))
 
 
 def _usuario(a):
@@ -408,6 +442,10 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--saida", default="resultados", help="pasta dos resultados (padrão: resultados)")
     p.add_argument("--modelos", default="modelos", help="pasta onde o modelo é registrado (padrão: modelos)")
     p.add_argument("--rapido", action="store_true", help="menos variantes e modelos (para testar)")
+    p.add_argument("--algoritmos", help="só estes classificadores, separados por vírgula (lista: fiep modelos catalogo)")
+    p.add_argument("--variantes", help="só estas representações, separadas por vírgula (lista: fiep modelos catalogo)")
+    p.add_argument("--nao-ativar", action="store_true",
+                   help="registra o modelo sem trocar o que está em uso (para comparar)")
     p.add_argument("--artigo", action="store_true", help="copia figuras, tabelas e números para o artigo")
     p.add_argument("--artigo-pasta", default="artigo/gerado", help="destino do --artigo (padrão: artigo/gerado)")
     p.add_argument("--config", help=CONFIG_AJUDA)
@@ -420,6 +458,17 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--config", help=CONFIG_AJUDA + "; usa os [niveis] de contaminação dela")
 
     # ------------------------------------------------------------------ plataforma
+    p = cmd("modelos", "modelos treinados: listar, mostrar, ativar, catalogo", _modelos,
+            "Ações:\n"
+            "  listar    modelos registrados, com as métricas no teste (* = em uso)\n"
+            "  mostrar   métricas e comparação de um modelo (--id)\n"
+            "  ativar    passa a usar o modelo --id na plataforma e no fiep prever\n"
+            "  catalogo  algoritmos e representações disponíveis para o fiep experimento")
+    p.add_argument("acao", choices=["listar", "mostrar", "ativar", "catalogo"], help="o que fazer")
+    p.add_argument("--id", help="id do modelo (ex.: 20261022-102514)")
+    p.add_argument("--modelos", default="modelos", help="pasta de modelos (padrão: modelos)")
+    p.add_argument("--resultados", default="resultados", help="pasta dos experimentos (padrão: resultados)")
+
     p = cmd("servir", "abre a plataforma web (login, coletas, amostras, previsão)", _servir,
             "Serve o frontend compilado (web/dist) e a API. Primeiro acesso: fiep usuario criar --papel admin. "
             "Variáveis de ambiente: ver docs/PLATAFORMA.md.")

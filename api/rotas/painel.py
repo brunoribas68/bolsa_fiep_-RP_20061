@@ -31,7 +31,9 @@ def painel(request: Request, s: Session = Depends(sessao), _=Depends(usuario_atu
     try:
         c = request.app.state.modelo.pacote()["cartao"]
         mt = c.get("metricas_teste") or {}
+        from fiep.registro import _acuracia
         modelo = {"id": c["id"], "algoritmo": c.get("modelo"), "limiar": limpo(c.get("limiar")),
+                  "acuracia_teste": limpo(_acuracia(mt)),
                   "ab_teste": limpo(mt.get("balanced_accuracy")), "auc_teste": limpo(mt.get("roc_auc")),
                   "n_amostras": c.get("n_amostras"), "criado_em": c.get("criado_em")}
     except Exception:  # noqa: BLE001

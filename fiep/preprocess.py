@@ -24,10 +24,15 @@ def _escolher_scan(p: pd.DataFrame, regra) -> pd.DataFrame:
 
 
 def _curva(p: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
-    p = p.dropna(subset=["potential_v", "current_ua"])
+    e = p["potential_v"].to_numpy(float)
+    i = p["current_ua"].to_numpy(float)
+    ok = ~(np.isnan(e) | np.isnan(i))
+    e, i = e[ok], i[ok]
     # potenciais repetidos (ida e volta) são promediados para obter uma função E -> I
-    g = p.groupby("potential_v", sort=True)["current_ua"].mean()
-    return g.index.to_numpy(float), g.to_numpy(float)
+    u, inv = np.unique(e, return_inverse=True)
+    soma = np.bincount(inv, weights=i, minlength=len(u))
+    n = np.bincount(inv, minlength=len(u))
+    return u, soma / np.maximum(n, 1)
 
 
 def inferir_grade(curvas: dict, cfg: dict) -> np.ndarray:
@@ -71,14 +76,23 @@ def curvas_por_medicao(pontos: pd.DataFrame, ids, cfg: dict) -> dict:
 def para_matriz(curvas: dict, grade: np.ndarray, cfg: dict) -> pd.DataFrame:
     """Matriz (medições x pontos da grade). Fora da faixa medida fica NaN."""
     pp = cfg["preprocessamento"]
-    linhas = {}
-    for mid, (e, i) in curvas.items():
-        y = np.interp(grade, e, i, left=np.nan, right=np.nan)
-        ok = ~np.isnan(y)
+    ids = list(curvas)
+    Y = np.vstack([np.interp(grade, *curvas[m], left=np.nan, right=np.nan) for m in ids]) if ids \
+        else np.empty((0, len(grade)))
+    # curvas com a mesma faixa válida são processadas juntas (mesmo resultado, bem mais rápido)
+    mascaras = ~np.isnan(Y)
+    grupos: dict[bytes, list[int]] = {}
+    for k, ok in enumerate(mascaras):
         if ok.sum() >= 5:
-            if pp["suavizar"]:
-                y[ok] = _suavizar(y[ok], pp["janela_savgol"], pp["ordem_savgol"])
-            if pp["linha_de_base"] == "linear_extremos":
-                y[ok] = _linha_base(grade[ok], y[ok], pp["frac_extremos"])
-        linhas[mid] = y
-    return pd.DataFrame.from_dict(linhas, orient="index", columns=[f"{v:.3f}" for v in grade])
+            grupos.setdefault(ok.tobytes(), []).append(k)
+    for linhas_g in grupos.values():
+        ok = mascaras[linhas_g[0]]
+        bloco = Y[np.ix_(linhas_g, np.flatnonzero(ok))]
+        if pp["suavizar"]:
+            janela = min(pp["janela_savgol"], bloco.shape[1] if bloco.shape[1] % 2 else bloco.shape[1] - 1)
+            if janela > pp["ordem_savgol"] + 1:
+                bloco = savgol_filter(bloco, window_length=janela, polyorder=pp["ordem_savgol"], axis=1)
+        if pp["linha_de_base"] == "linear_extremos":
+            bloco = np.vstack([_linha_base(grade[ok], b, pp["frac_extremos"]) for b in bloco])
+        Y[np.ix_(linhas_g, np.flatnonzero(ok))] = bloco
+    return pd.DataFrame(Y, index=ids, columns=[f"{v:.3f}" for v in grade])
