@@ -1,20 +1,8 @@
-"""Linha de comando da pipeline FIEP (`fiep <comando>` ou `python -m fiep <comando>`).
+"""Linha de comando do projeto FIEP (`fiep <comando>` ou `python -m fiep <comando>`).
 
-Fluxo principal:
-    fiep planilha    --entrada dados/empresa1          # planilha de metadados do lote de .nox
-    fiep db importar --entrada dados                   # grava no banco (dados/fiep.db) e roda o QC
-    fiep experimento --artigo                         # divide dados/ em 50/25/25 (+ pastas)
-    fiep servir                                        # página web + API com o modelo registrado
-    fiep prever      --entrada nova_coleta/ --db dados/fiep.db
-
-Banco:
-    fiep db resumo | fiep db sql "SELECT ..." | fiep db exportar --saida dados/fiep_banco.xlsx
-
-Treino simples (sem comparar variantes) e fluxo só com arquivos:
-    fiep treinar --db dados/fiep.db
-    fiep ingerir --entrada dados/treino --saida dados/processados
-    fiep qc      --dados dados/processados
-    fiep tudo    --entrada dados/treino
+Ajuda: `fiep -h` e `fiep <comando> -h`. Todas as opções: docs/COMANDOS.md (gerado por `fiep docs`).
+O parser fica em `construir_parser()`; o README e docs/COMANDOS.md são conferidos pelos testes
+(tests/test_docs.py), então um comando novo precisa aparecer no README.
 """
 from __future__ import annotations
 
@@ -41,7 +29,7 @@ def _qc(a):
     from .ingest import Dataset
     from .qc import avaliar
     ds = Dataset.carregar(a.dados)
-    qc = avaliar(ds.medicoes, ds.pontos, load_config(a.config))
+    qc = avaliar(ds.medicoes, ds.pontos, _cfg(a))
     destino = Path(a.dados) / "qc.csv"
     qc.to_csv(destino, index=False)
     print(qc["qc_final"].value_counts().to_string())
@@ -62,12 +50,12 @@ def _treinar(a, ds=None):
         ds = ds or db.carregar(con, a.filtro)
         print(f"{len(ds.medicoes)} medições lidas de {a.db}" + (f" (filtro: {a.filtro})" if a.filtro else ""))
     ds = ds or Dataset.carregar(a.dados)
-    r = treinar(ds, load_config(a.config), a.modelos)
+    r = treinar(ds, _cfg(a), a.modelos)
     if con is not None:
         from . import db
         from .qc import avaliar
         db.registrar_modelo(con, r["cartao"], r["pasta"])
-        db.gravar_qc(con, avaliar(ds.medicoes, ds.pontos, load_config(a.config)))
+        db.gravar_qc(con, avaliar(ds.medicoes, ds.pontos, _cfg(a)))
         print(f"Modelo {r['cartao']['id']} registrado no banco.")
     print(r["metricas"][["modelo", "balanced_accuracy", "sensibilidade", "especificidade", "roc_auc",
                          "limiar"]].round(3).to_string(index=False))
@@ -79,7 +67,7 @@ def _prever(a):
     from .predict import prever
     from .predict import resumo_por_amostra
     pacote = carregar(a.modelo)
-    res = prever(a.entrada, pacote, niveis=load_config(a.config).get("niveis"))
+    res = prever(a.entrada, pacote, niveis=_cfg(a).get("niveis"))
     am = resumo_por_amostra(res)
     if getattr(a, "db", None):
         from . import db
@@ -102,11 +90,19 @@ def _experimento(a):
     import shutil
     from .divisao import CONJUNTOS, de_pastas, montar, subconjunto
     from .experimentos import rodar
-    cfg = load_config(a.config)
+    cfg = _cfg(a)
     if a.db:
         from . import db
         con = db.conectar(a.db)
         todos = db.carregar(con, a.filtro)
+        # dados de exemplo só entram quando não há outros (demonstração)
+        ex = db.id_empresa_exemplo(con)
+        if ex is not None and "empresa_id" in todos.medicoes and (todos.medicoes["empresa_id"] != ex).any() \
+                and not a.com_exemplo:
+            reais = set(todos.medicoes.loc[todos.medicoes["empresa_id"] != ex, "sample_id"].dropna())
+            todos = subconjunto(todos, reais)
+            print(f"Dados de exemplo deixados de fora (use --com-exemplo para incluir ou "
+                  f"`fiep db exemplo --remover` para apagá-los).")
         med = todos.medicoes
         # conjunto definido na importação (pastas treino/validacao/teste) e/ou por filtro SQL
         ids = {k: set(med.loc[med["conjunto"] == k, "sample_id"]) if "conjunto" in med else set()
@@ -183,7 +179,7 @@ def _excel(a):
 def _planilha(a):
     import pandas as pd
     from .planilha import gerar_planilha
-    cfg = load_config(a.config)
+    cfg = _cfg(a)
     destino, n = gerar_planilha(a.entrada, cfg=cfg)
     print(f"{n} arquivo(s) novo(s) em {destino} (amostra, réplica, estágio e data já deduzidos — só confira)")
     am_path = Path(a.entrada) / "amostras.csv"
@@ -264,8 +260,14 @@ def _db(a):
         partes = [(None, base, RESERVADAS)] if tem_dados(base, RESERVADAS) else []
         partes += [(k, base / k, ()) for k in CONJUNTOS if tem_dados(base / k)]
         if not partes and tem_dados(base / "exemplo_case"):
-            print(f"Sem dados em {base}: importando {base / 'exemplo_case'} (demonstração).")
-            partes = [(None, base / "exemplo_case", ())]
+            if db.id_empresa_exemplo(con) is not None:
+                print(f"Sem dados em {base} além do exemplo, que já está no banco.")
+                print(db.resumo(con).to_string(index=False))
+                return
+            print(f"Sem dados em {base}: carregando o case de demonstração.")
+            r = db.carregar_exemplo(con)
+            print(f"{r['amostras']} amostras, {r['medicoes']} medições.")
+            return
         if not partes:
             raise FileNotFoundError(f"Nenhum dado em {base}")
         if a.conjunto:
@@ -280,7 +282,7 @@ def _db(a):
             ds = ingerir(pasta, excluir=excluir)
             ds.medicoes["conjunto"] = conjunto
             r = db.importar(con, ds, origem=str(pasta), conjunto=conjunto, empresa=a.empresa)
-            n_qc = db.gravar_qc(con, avaliar(ds.medicoes, ds.pontos, load_config(a.config)))
+            n_qc = db.gravar_qc(con, avaliar(ds.medicoes, ds.pontos, _cfg(a)))
             print(f"Importação #{r['importacao_id']} ({pasta}, conjunto: {conjunto or 'a sortear'}): "
                   f"{r['medicoes']} medições, {r['pontos']:,} pontos, {r['amostras']} amostras, "
                   f"{r['arquivos_novos']} arquivo(s) novo(s); QC de {n_qc} medições.")
@@ -315,108 +317,262 @@ def _tudo(a):
     _treinar(a, ds)
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser(prog="fiep", description="Pipeline FIEP: voltametria -> contaminação")
-    ap.add_argument("-v", "--verbose", action="store_true")
-    sub = ap.add_subparsers(dest="cmd", required=True)
+DB_AJUDA = "arquivo SQLite ou URL do banco (padrão: variável FIEP_DB_URL ou dados/fiep.db)"
+CONFIG_AJUDA = "arquivo de configuração (padrão: variável FIEP_CONFIG ou configs/default.toml)"
 
-    p = sub.add_parser("ingerir", help="lê .nox/tabelas e grava o formato canônico")
-    p.add_argument("--entrada", required=True)
-    p.add_argument("--saida", default="dados/processados")
-    p.set_defaults(fn=_ingerir)
 
-    p = sub.add_parser("qc", help="controle de qualidade das medições ingeridas")
-    p.add_argument("--dados", default="dados/processados")
-    p.add_argument("--config")
-    p.set_defaults(fn=_qc)
+class _Fmt(argparse.RawDescriptionHelpFormatter):
+    def __init__(self, prog):
+        super().__init__(prog, max_help_position=34, width=110)
 
-    p = sub.add_parser("treinar", help="valida (CV agrupada), escolhe e salva o modelo")
-    p.add_argument("--dados", default="dados/processados")
-    p.add_argument("--db", help="treinar com os dados do banco SQLite (e registrar o modelo nele)")
-    p.add_argument("--filtro", help="filtro SQL sobre a tabela medicoes, ex.: \"tecnica = 'DPV'\"")
-    p.add_argument("--config")
-    p.add_argument("--modelos", default="modelos")
-    p.set_defaults(fn=_treinar)
 
-    p = sub.add_parser("prever", help="classifica medições novas com o modelo salvo")
-    p.add_argument("--entrada", required=True, help="pasta com .nox + planilha de metadados, ou tabelas")
-    p.add_argument("--modelo", default="modelos", help="pasta de modelos (usa ATUAL) ou pasta/arquivo de um modelo")
-    p.add_argument("--saida")
-    p.add_argument("--db", help="gravar as previsões neste banco SQLite")
-    p.add_argument("--config", help="configuração com os [niveis] de contaminação (padrão: a do modelo)")
-    p.set_defaults(fn=_prever)
+def _pt(p: argparse.ArgumentParser) -> None:
+    p._positionals.title, p._optionals.title = "argumentos", "opções"
+    p.add_argument("-h", "--help", action="help", help="mostra esta ajuda")
 
-    p = sub.add_parser("experimento", help="compara variantes de features x modelos e registra o melhor")
-    p.add_argument("--dados", default="dados",
-                   help="pasta de dados: o que estiver solto é dividido em treino/validação/teste (padrão 50/25/25); "
-                        "o que estiver em dados/treino, dados/validacao e dados/teste é somado ao conjunto da pasta")
-    p.add_argument("--db", help="usar o banco SQLite em vez das pastas")
-    p.add_argument("--filtro", help="filtro SQL dos dados a dividir (com --db)")
-    p.add_argument("--filtro-treino", help="filtro SQL de amostras que vão inteiras para o treino (com --db)")
-    p.add_argument("--filtro-validacao", help="idem, para a validação (com --db)")
-    p.add_argument("--filtro-teste", help="idem, para o teste (ex.: outra empresa) (com --db)")
-    p.add_argument("--config")
-    p.add_argument("--saida", default="resultados")
-    p.add_argument("--modelos", default="modelos")
-    p.add_argument("--rapido", action="store_true", help="menos variantes e modelos (para testar)")
-    p.add_argument("--artigo", action="store_true", help="copiar figuras e tabelas para o artigo")
-    p.add_argument("--artigo-pasta", default="artigo/gerado")
-    p.set_defaults(fn=_experimento)
 
-    p = sub.add_parser("servir", help="abre a plataforma (frontend + API, com login)")
-    p.add_argument("--modelos", default="modelos")
-    p.add_argument("--db", help="arquivo SQLite ou URL do banco (padrão: FIEP_DB_URL ou dados/fiep.db)")
-    p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--porta", type=int, default=8000)
-    p.set_defaults(fn=_servir)
+def construir_parser() -> argparse.ArgumentParser:
+    from . import __version__
+    ap = argparse.ArgumentParser(
+        prog="fiep", formatter_class=_Fmt, add_help=False,
+        description="Pipeline e plataforma FIEP: voltamogramas (.nox/Excel do NOVA) -> banco -> modelos -> "
+                    "previsão de contaminação.",
+        epilog="Fluxo típico:\n"
+               "  fiep planilha --entrada dados/empresa1      # confere o que foi deduzido; rótulos em amostras.csv\n"
+               "  fiep db importar --entrada dados            # grava no banco (com QC e cópia em Excel)\n"
+               "  fiep experimento --artigo                   # treina, compara e registra o melhor modelo\n"
+               "  fiep servir                                 # plataforma web com login\n"
+               "Ajuda de cada comando: fiep <comando> -h · Lista completa: docs/COMANDOS.md")
+    _pt(ap)
+    ap.add_argument("-v", "--verbose", action="store_true", help="mostra o andamento (logs INFO)")
+    ap.add_argument("--version", action="version", version=f"fiep {__version__}", help="mostra a versão")
+    sub = ap.add_subparsers(dest="cmd", required=True, metavar="<comando>", title="comandos")
 
-    p = sub.add_parser("planilha", help="cria/completa a planilha de metadados de um lote de .nox")
-    p.add_argument("--entrada", required=True, help="pasta com os .nox (ex.: dados/treino)")
-    p.add_argument("--config")
-    p.set_defaults(fn=_planilha)
+    def cmd(nome, ajuda, fn, descricao=None):
+        p = sub.add_parser(nome, help=ajuda, description=descricao or ajuda, formatter_class=_Fmt, add_help=False)
+        _pt(p)
+        p.set_defaults(fn=fn)
+        return p
 
-    p = sub.add_parser("excel", help="converte os .nox de uma pasta para Excel (formato do NOVA)")
+    # ------------------------------------------------------------------ dados
+    p = cmd("planilha", "gera amostras.csv (1 linha por amostra) e metadados_nox.csv já preenchidos", _planilha,
+            "Lê os .nox/Excel de uma pasta e deduz amostra (pasta), eletrodo (E1.. no nome ou canal), etapa do "
+            "sensor e data. Cria metadados_nox.csv (conferência, 1 linha por arquivo) e amostras.csv "
+            "(rótulo e carga, 1 linha por amostra). Rodar de novo só acrescenta o que é novo.")
+    p.add_argument("--entrada", required=True, help="pasta do lote (ex.: dados/empresa1)")
+    p.add_argument("--config", help=CONFIG_AJUDA)
+
+    p = cmd("excel", "converte .nox para Excel no formato do NOVA", _excel)
     p.add_argument("--entrada", required=True, help="pasta com .nox (ex.: dados/empresa1)")
     p.add_argument("--saida", help="pasta de saída (padrão: dados/excel/<lote>)")
     p.add_argument("--refazer", action="store_true", help="converte de novo mesmo se o Excel já existir")
-    p.set_defaults(fn=_excel)
 
-    p = sub.add_parser("usuario", help="contas da plataforma: criar, listar, senha, desativar")
-    p.add_argument("acao", choices=["criar", "listar", "senha", "desativar"])
-    p.add_argument("--email")
-    p.add_argument("--nome")
-    p.add_argument("--papel", choices=["admin", "colaborador", "leitor"], default="colaborador")
-    p.add_argument("--instituicao")
-    p.add_argument("--db", help="arquivo SQLite ou URL do banco (padrão: FIEP_DB_URL ou dados/fiep.db)")
-    p.set_defaults(fn=_usuario)
-
-    p = sub.add_parser("db", help="banco de dados: migrar, importar, resumo, exportar, sql, exemplo")
-    p.add_argument("acao", choices=["migrar", "importar", "resumo", "exportar", "sql", "exemplo"])
-    p.add_argument("consulta", nargs="?", help="consulta SQL (para a ação sql)")
-    p.add_argument("--db", help="arquivo SQLite ou URL do banco (padrão: FIEP_DB_URL ou dados/fiep.db)")
+    p = cmd("db", "banco de dados: migrar, importar, resumo, sql, exportar, exemplo", _db,
+            "Ações:\n"
+            "  migrar    cria/atualiza o banco pelas migrations (com os dados de exemplo, salvo --sem-exemplo)\n"
+            "  importar  lê --entrada (.nox, Excel/CSV do NOVA, planilhas), roda o QC e grava; com a pasta dados/,\n"
+            "            o que está em treino/ validacao/ teste/ é gravado com o seu conjunto\n"
+            "  resumo    contagens (amostras, medições, réplicas completas, QC...)\n"
+            "  sql       consulta livre, ex.: fiep db sql \"SELECT * FROM v_replicatas WHERE n_aprovadas < 3\"\n"
+            "  exportar  tudo para Excel (uma aba por tabela) ou CSV\n"
+            "  exemplo   carrega o case de demonstração (--remover para apagar)")
+    p.add_argument("acao", choices=["migrar", "importar", "resumo", "exportar", "sql", "exemplo"], help="o que fazer")
+    p.add_argument("consulta", nargs="?", help="consulta SQL (ação sql)")
+    p.add_argument("--db", help=DB_AJUDA)
+    p.add_argument("--entrada", help="importar: pasta com os dados (ex.: dados)")
+    p.add_argument("--empresa", help="importar: nome da empresa dos dados")
+    p.add_argument("--conjunto", choices=["treino", "validacao", "teste"],
+                   help="importar: grava tudo como deste conjunto (padrão: sorteio, ou o da subpasta)")
+    p.add_argument("--sem-excel", action="store_true", help="importar: não gerar a cópia em Excel (dados/excel/)")
     p.add_argument("--sem-exemplo", action="store_true", help="migrar: não carregar os dados de exemplo")
     p.add_argument("--remover", action="store_true", help="exemplo: apagar os dados de exemplo")
-    p.add_argument("--empresa", help="importar: nome da empresa dos dados")
-    p.add_argument("--entrada", help="pasta com .nox/tabelas (para importar); com dados/, as subpastas "
-                                     "treino/validacao/teste são gravadas com o seu conjunto")
-    p.add_argument("--sem-excel", action="store_true", help="não gerar a cópia em Excel dos .nox (dados/excel/)")
-    p.add_argument("--conjunto", choices=["treino", "validacao", "teste"],
-                   help="grava tudo o que for importado como deste conjunto")
-    p.add_argument("--config")
-    p.add_argument("--formato", choices=["xlsx", "csv"], default="xlsx")
-    p.add_argument("--saida")
-    p.set_defaults(fn=_db)
+    p.add_argument("--formato", choices=["xlsx", "csv"], default="xlsx", help="exportar: formato (padrão xlsx)")
+    p.add_argument("--saida", help="exportar/sql: arquivo ou pasta de saída")
+    p.add_argument("--config", help=CONFIG_AJUDA)
 
-    p = sub.add_parser("tudo", help="ingerir + treinar")
-    p.add_argument("--entrada", required=True)
-    p.add_argument("--dados", default="dados/processados")
-    p.add_argument("--config")
-    p.add_argument("--modelos", default="modelos")
+    # ------------------------------------------------------------------ modelos
+    p = cmd("experimento", "divide 50/25/25, compara representações x modelos e registra o melhor", _experimento,
+            "Divide as amostras em treino/validação/teste (padrão 50/25/25, por amostra, estratificado), ajusta "
+            "5 representações x 12 modelos no treino, escolhe pela validação, re-treina com treino+validação e "
+            "mede uma vez no teste. Registra o melhor em modelos/ (usado pela plataforma) e gera figuras/tabelas.")
+    p.add_argument("--dados", default="dados",
+                   help="pasta de dados (padrão: dados). Solto em dados/ = sorteio; dados/treino, dados/validacao e "
+                        "dados/teste = somados ao conjunto")
+    p.add_argument("--db", help="usar o banco em vez das pastas (" + DB_AJUDA + ")")
+    p.add_argument("--filtro", help="com --db: filtro SQL das medições, ex.: \"empresa_id = 2\"")
+    p.add_argument("--filtro-treino", help="com --db: filtro SQL de amostras que vão inteiras para o treino")
+    p.add_argument("--filtro-validacao", help="com --db: idem, para a validação")
+    p.add_argument("--filtro-teste", help="com --db: idem, para o teste (ex.: outra empresa)")
+    p.add_argument("--com-exemplo", action="store_true",
+                   help="com --db: inclui os dados de exemplo mesmo havendo dados reais")
+    p.add_argument("--saida", default="resultados", help="pasta dos resultados (padrão: resultados)")
+    p.add_argument("--modelos", default="modelos", help="pasta onde o modelo é registrado (padrão: modelos)")
+    p.add_argument("--rapido", action="store_true", help="menos variantes e modelos (para testar)")
+    p.add_argument("--artigo", action="store_true", help="copia figuras, tabelas e números para o artigo")
+    p.add_argument("--artigo-pasta", default="artigo/gerado", help="destino do --artigo (padrão: artigo/gerado)")
+    p.add_argument("--config", help=CONFIG_AJUDA)
+
+    p = cmd("prever", "classifica dados novos com o modelo registrado (por amostra e por eletrodo)", _prever)
+    p.add_argument("--entrada", required=True, help="pasta com .nox/Excel (uma subpasta por amostra)")
+    p.add_argument("--modelo", default="modelos", help="pasta de modelos (usa ATUAL) ou a pasta de um modelo")
+    p.add_argument("--saida", help="CSV com o resultado por eletrodo (+ <nome>_amostras.csv)")
+    p.add_argument("--db", help="gravar as previsões neste banco")
+    p.add_argument("--config", help=CONFIG_AJUDA + "; usa os [niveis] de contaminação dela")
+
+    # ------------------------------------------------------------------ plataforma
+    p = cmd("servir", "abre a plataforma web (login, coletas, amostras, previsão)", _servir,
+            "Serve o frontend compilado (web/dist) e a API. Primeiro acesso: fiep usuario criar --papel admin. "
+            "Variáveis de ambiente: ver docs/PLATAFORMA.md.")
+    p.add_argument("--db", help=DB_AJUDA)
+    p.add_argument("--modelos", default="modelos", help="pasta de modelos (padrão: modelos)")
+    p.add_argument("--host", default="127.0.0.1", help="endereço (0.0.0.0 para a rede local)")
+    p.add_argument("--porta", type=int, default=8000, help="porta (padrão: 8000)")
+
+    p = cmd("usuario", "contas da plataforma: criar, listar, senha, desativar", _usuario,
+            "criar e senha pedem a senha no terminal (ou leem FIEP_SENHA_NOVA). Perfis: admin (tudo), "
+            "colaborador (envia e edita dados), leitor (consulta).")
+    p.add_argument("acao", choices=["criar", "listar", "senha", "desativar"], help="o que fazer")
+    p.add_argument("--email", help="e-mail (login) da conta")
+    p.add_argument("--nome", help="nome completo (criar)")
+    p.add_argument("--papel", choices=["admin", "colaborador", "leitor"], default="colaborador",
+                   help="perfil (criar; padrão: colaborador)")
+    p.add_argument("--instituicao", help="instituição (criar)")
+    p.add_argument("--db", help=DB_AJUDA)
+
+    # ------------------------------------------------------------------ manutenção
+    p = cmd("verificar", "diagnóstico da instalação (dependências, banco, modelo, frontend)", _verificar)
+    p.add_argument("--db", help=DB_AJUDA)
+    p.add_argument("--modelos", default="modelos", help="pasta de modelos (padrão: modelos)")
+
+    p = cmd("docs", "regera docs/COMANDOS.md a partir desta ajuda", _docs)
+    p.add_argument("--saida", default="docs/COMANDOS.md", help="arquivo (padrão: docs/COMANDOS.md)")
+
+    # ------------------------------------------------------------------ fluxo antigo, só arquivos
+    p = cmd("ingerir", "(avançado) lê .nox/tabelas e grava CSVs canônicos, sem banco", _ingerir)
+    p.add_argument("--entrada", required=True, help="pasta com os dados")
+    p.add_argument("--saida", default="dados/processados", help="pasta de saída (padrão: dados/processados)")
+    p.add_argument("--config", help=CONFIG_AJUDA)
+
+    p = cmd("qc", "(avançado) controle de qualidade dos CSVs canônicos", _qc)
+    p.add_argument("--dados", default="dados/processados", help="pasta do ingerir (padrão: dados/processados)")
+    p.add_argument("--config", help=CONFIG_AJUDA)
+
+    p = cmd("treinar", "(avançado) treino rápido com a configuração, sem comparar variantes", _treinar)
+    p.add_argument("--dados", default="dados/processados", help="pasta do ingerir (padrão: dados/processados)")
+    p.add_argument("--db", help="treinar com o banco (" + DB_AJUDA + ")")
+    p.add_argument("--filtro", help="com --db: filtro SQL das medições")
+    p.add_argument("--modelos", default="modelos", help="pasta de modelos (padrão: modelos)")
+    p.add_argument("--config", help=CONFIG_AJUDA)
+
+    p = cmd("tudo", "(avançado) ingerir + treinar", _tudo)
+    p.add_argument("--entrada", required=True, help="pasta com os dados")
+    p.add_argument("--dados", default="dados/processados", help="pasta intermediária (padrão: dados/processados)")
     p.add_argument("--db", help="também importar para este banco e treinar a partir dele")
-    p.add_argument("--filtro")
-    p.set_defaults(fn=_tudo)
+    p.add_argument("--filtro", help="com --db: filtro SQL das medições")
+    p.add_argument("--modelos", default="modelos", help="pasta de modelos (padrão: modelos)")
+    p.add_argument("--config", help=CONFIG_AJUDA)
+    return ap
 
-    a = ap.parse_args(argv)
+
+def comandos_markdown() -> str:
+    """Referência de todos os comandos e opções (docs/COMANDOS.md), gerada da própria ajuda."""
+    ap = construir_parser()
+    sub = next(a for a in ap._actions if isinstance(a, argparse._SubParsersAction))
+    partes = ["# Comandos `fiep`", "",
+              "Gerado por `fiep docs` a partir da ajuda dos comandos — não edite à mão. "
+              "Sem instalar o pacote, use `python -m fiep` na raiz do repositório.", "",
+              "| Comando | Para quê |", "|---|---|"]
+    ajudas = {a.dest: a.help for a in sub._choices_actions}
+    partes += [f"| [`fiep {n}`](#fiep-{n}) | {ajudas.get(n, '')} |" for n in sub.choices]
+    for n, p in sub.choices.items():
+        partes += ["", f"## fiep {n}", "", "```", p.format_help().replace("usage:", "uso:").rstrip(), "```"]
+    return "\n".join(partes) + "\n"
+
+
+def _docs(a):
+    Path(a.saida).parent.mkdir(parents=True, exist_ok=True)
+    Path(a.saida).write_text(comandos_markdown(), encoding="utf-8")
+    print(f"{a.saida} atualizado.")
+
+
+def _verificar(a):
+    import importlib
+    import platform
+    ok = True
+
+    def linha(estado, item, detalhe=""):
+        nonlocal ok
+        ok &= estado != "ERRO"
+        print(f"[{estado:^5}] {item}" + (f" — {detalhe}" if detalhe else ""))
+
+    from . import __version__
+    linha("ok", f"Python {platform.python_version()} ({sys.executable})")
+    linha("ok", f"pacote fiep {__version__} em {Path(__file__).resolve().parent}")
+    for mod, extra in [("pandas", ""), ("sklearn", ""), ("sqlalchemy", ""), ("alembic", ""), ("bcrypt", ""),
+                       ("openpyxl", ""), ("matplotlib", ""), ("fastapi", "[api]"), ("uvicorn", "[api]"),
+                       ("jwt", "[api]"), ("multipart", "[api]")]:
+        try:
+            importlib.import_module(mod)
+            linha("ok", mod)
+        except ImportError:
+            linha("ERRO", mod, f'faltando: pip install -e ".{extra or ""}"'.replace('.""', '.'))
+    cfg_arq = _arquivo_config(None)
+    linha("ok" if cfg_arq else "aviso", "configuração", cfg_arq or "usando os valores de fábrica")
+    try:
+        from . import db
+        from .orm import url_banco
+        url = url_banco(a.db)
+        if url.startswith("sqlite:///") and not Path(url[len("sqlite:///"):]).exists():
+            linha("aviso", "banco", f"ainda não criado ({url}); é criado no primeiro uso, com os dados de exemplo")
+            raise LookupError
+        s = db.conectar(a.db)
+        r = db.resumo(s).set_index("item")["total"]
+        from .orm import url_banco
+        linha("ok", "banco", f"{url_banco(a.db)} — {r['amostras']} amostras, {r['medições']} medições, "
+                             f"{int(db.sql(s, 'SELECT COUNT(*) FROM usuarios').iloc[0, 0])} usuário(s)")
+        if not int(db.sql(s, "SELECT COUNT(*) FROM usuarios WHERE papel = 'admin' AND ativo").iloc[0, 0]):
+            linha("aviso", "nenhum admin", "fiep usuario criar --email voce@... --papel admin")
+        s.close()
+    except LookupError:
+        pass
+    except Exception as e:  # noqa: BLE001
+        linha("ERRO", "banco", str(e).splitlines()[0])
+    try:
+        from .model import carregar
+        c = carregar(a.modelos)["cartao"]
+        linha("ok", "modelo", f"{c['id']} — {c.get('modelo')}")
+    except Exception:  # noqa: BLE001
+        linha("aviso", "modelo", f"nenhum em {a.modelos}/: rode fiep experimento")
+    raiz = Path(__file__).resolve().parents[1]
+    web = raiz / "web" / "dist" / "index.html"
+    linha("ok" if web.exists() else "aviso", "frontend", str(web.parent) if web.exists()
+          else "não compilado: cd web && npm install && npm run build")
+    print("\nTudo certo." if ok else "\nCorrija os itens com ERRO.")
+    if not ok:
+        raise SystemExit(1)
+
+
+def _arquivo_config(caminho: str | None) -> str | None:
+    """--config, ou FIEP_CONFIG, ou configs/default.toml (se existir)."""
+    for c in (caminho, os.environ.get("FIEP_CONFIG"), "configs/default.toml"):
+        if c and Path(c).exists():
+            return c
+    if caminho:
+        raise FileNotFoundError(f"configuração não encontrada: {caminho}")
+    return None
+
+
+def _cfg(a) -> dict:
+    return load_config(_arquivo_config(getattr(a, "config", None)))
+
+
+def main(argv=None):
+    for fluxo in (sys.stdout, sys.stderr):              # console do Windows: acentos e símbolos sem quebrar
+        try:
+            fluxo.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
+    a = construir_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO if a.verbose else logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     try:
         a.fn(a)

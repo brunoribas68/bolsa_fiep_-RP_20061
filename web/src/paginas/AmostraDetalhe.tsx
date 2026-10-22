@@ -77,7 +77,8 @@ export default function AmostraDetalhe() {
   }, [protocolos, a]);
   const ordem = etapas.map(e => e.id);
   const nomeEst = (id: string | null) => etapas.find(e => e.id === id)?.nome || NOME_ESTAGIO[id || ""] || id || "?";
-  const replicas = useMemo(() => [...new Set((curvas || []).map(c => c.replicate_id || "—"))].sort(), [curvas]);
+  const replicas = useMemo(() => [...new Set((curvas || []).map(c => c.replicate_id || "—"))]
+    .sort((x, y) => x.localeCompare(y, "pt-BR", { numeric: true })), [curvas]);
   const atual = replica ?? replicas[0] ?? null;
   const series: Serie[] = useMemo(() => (curvas || [])
     .filter(c => (c.replicate_id || "—") === atual)
@@ -134,7 +135,7 @@ export default function AmostraDetalhe() {
           {replicas.length > 1 && (
             <div className="abas" role="tablist">
               {replicas.map(r => <button key={r} role="tab" aria-selected={r === atual} className={r === atual ? "ativa" : ""}
-                                         onClick={() => setReplica(r)}>Réplica {r}</button>)}
+                                         onClick={() => setReplica(r)}>Eletrodo {r}</button>)}
             </div>)}
           {curvas ? <GraficoCurvas series={series} /> : <div className="mudo">Carregando curvas…</div>}
         </div>
@@ -168,8 +169,9 @@ export default function AmostraDetalhe() {
         <div className="cartao">
           <h2>Medições ({a.medicoes.length})</h2>
           <div className="tabela"><table>
-            <thead><tr><th>Réplica</th><th>Estágio do sensor</th><th>Técnica</th><th>QC</th><th>Arquivo</th><th className="num">Pontos</th></tr></thead>
-            <tbody>{a.medicoes.map(m => (
+            <thead><tr><th>Eletrodo</th><th>Etapa do sensor</th><th>Técnica</th><th>QC</th><th>Arquivo</th><th className="num">Pontos</th></tr></thead>
+            <tbody>{[...a.medicoes].sort((x, y) => String(x.replicate_id).localeCompare(String(y.replicate_id), "pt-BR", { numeric: true })
+              || ordem.indexOf(x.sensor_state || "") - ordem.indexOf(y.sensor_state || "")).map(m => (
               <tr key={m.measurement_id}>
                 <td>{m.replicate_id || "—"}</td>
                 <td>{pode("editar") ? (

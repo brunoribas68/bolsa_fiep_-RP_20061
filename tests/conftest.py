@@ -6,9 +6,14 @@ imitando o efeito que o modelo precisa aprender.
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pandas as pd
 import pytest
+
+# bancos criados nos testes começam vazios (quem quiser o exemplo pede: dados_exemplo=True)
+os.environ["FIEP_DADOS_EXEMPLO"] = "0"
 
 ESTAGIOS = ["carbon_clean", "capture_probe", "capture_probe_16S_rRNA"]
 

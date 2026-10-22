@@ -3,10 +3,14 @@
 \subsection{Biossensor e aquisição}
 Os sensores são eletrodos impressos de carbono fabricados por serigrafia em escala piloto
 \preencher{fabricante/processo, área do eletrodo de trabalho, referência e contraeletrodo}. Cada
-eletrodo é medido em três estágios: (1) carbono limpo (\texttt{carbon\_clean}); (2) após a
-imobilização da sonda de captura (\texttt{capture\_probe}) \preencher{sequência e
-concentração da sonda}; e (3) após a incubação com a amostra (\texttt{capture\_probe\_16S\_rRNA}).
-As medições foram feitas por voltametria de pulso diferencial em \preencher{eletrólito} com
+eletrodo é medido em três etapas sucessivas da montagem do sensor, e a informação usada pelo modelo
+é a mudança entre a última etapa (após o contato com a amostra) e a anterior, no mesmo eletrodo.
+Dois protocolos estão previstos na pipeline: o biossensor genossensor para rRNA 16S, com carbono
+limpo, sonda de captura e sonda após a incubação com a amostra, medido por voltametria de pulso
+diferencial (DPV); e o imunossensor para NS1, com bloqueio, imobilização do anticorpo monoclonal
+(mAb-NS1) e etapa final, medido por voltametria de onda quadrada (SWV). \preencher{protocolo
+usado nos resultados, sequência e concentração da sonda ou do anticorpo}
+As medições foram feitas em \preencher{eletrólito} com
 ferri/ferrocianeto \preencher{concentração} em um potenciostato Metrohm Autolab controlado pelo
 software NOVA 2, com faixa de potencial de \preencher{início} a \preencher{fim} V, passo de
 \preencher{passo} V, amplitude de modulação de \preencher{amplitude} V e tempo de modulação de
@@ -24,17 +28,19 @@ Os arquivos \texttt{.nox} gerados pelo NOVA são serializações binárias do .N
 diretamente, sem depender do software do fabricante, implementando o formato MS-NRBF
 \citep{msnrbf}. De cada medição são extraídos o potencial aplicado, a corrente diferencial
 ($\delta i$) e, para o controle de qualidade, o potencial efetivamente medido no eletrodo e a
-corrente de base. Uma planilha de metadados liga cada arquivo à amostra, à réplica (eletrodo) e ao
-estágio do sensor. Os dados são gravados em um banco SQLite com tabelas de amostras,
-plaqueamentos, medições, pontos dos voltamogramas, resultados do controle de qualidade, modelos e
-previsões; cada arquivo importado é registrado pelo seu hash SHA-256, o que garante
-rastreabilidade e evita duplicidade.
+corrente de base; exportações do NOVA em Excel ou CSV também são aceitas. A amostra, o eletrodo e a
+etapa do sensor são deduzidos da organização das pastas, do nome do arquivo e do cabeçalho do
+\texttt{.nox}, com conferência por planilha. Os dados são gravados em um banco relacional (modelo
+ORM com migrações versionadas) com tabelas de empresas, coletas, amostras, plaqueamentos,
+medições, curvas, controle de qualidade, modelos e previsões; cada arquivo importado é registrado
+pelo seu hash SHA-256, o que garante rastreabilidade e evita duplicidade. Os colaboradores enviam
+as coletas por uma plataforma web com autenticação, que grava no mesmo banco.
 
 \subsection{Controle de qualidade}
 Cada medição é reprovada automaticamente quando: tem menos de 50 pontos ou mais de 2\% de pontos
 inválidos; a corrente bruta ultrapassa 5~mA (sobrecarga do canal de corrente); ou o potencial
-medido difere do aplicado em mais de 20~mV em mais de 5\% dos pontos (o potenciostato não manteve o
-potencial). Medições com corrente máxima acima de dez vezes a mediana das medições da mesma técnica
+medido se afasta do aplicado em mais de 20~mV em mais de 5\% dos pontos, descontado o
+deslocamento constante da amplitude do pulso na SWV (o potenciostato não manteve o potencial). Medições com corrente máxima acima de dez vezes a mediana das medições da mesma técnica
 e estágio são marcadas para revisão. O resultado é combinado com a marcação manual do laboratório,
 prevalecendo a mais restritiva. Só medições aprovadas entram no treino e na previsão.
 

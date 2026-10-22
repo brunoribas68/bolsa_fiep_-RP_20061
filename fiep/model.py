@@ -206,5 +206,8 @@ def carregar(pasta_modelos: str | Path = "modelos", run_id: str | None = None) -
         return joblib.load(base)
     if (base / "modelo.joblib").exists():
         return joblib.load(base / "modelo.joblib")
+    if run_id is None and not (base / "ATUAL").exists():
+        raise FileNotFoundError(f"Nenhum modelo treinado em '{base}': rode `fiep experimento` "
+                                "(ou indique a pasta de um modelo com --modelo).")
     run_id = run_id or (base / "ATUAL").read_text().strip()
     return joblib.load(base / run_id / "modelo.joblib")

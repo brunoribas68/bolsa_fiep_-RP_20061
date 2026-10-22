@@ -182,3 +182,19 @@ def test_arquivo_que_nao_e_do_projeto_nao_e_tocado(tmp_path):
     sqlite3.connect(caminho).execute("CREATE TABLE clientes (id INTEGER)").connection.commit()
     with pytest.raises(RuntimeError, match="não é um banco da plataforma"):
         db.conectar(caminho)
+
+
+def test_experimento_pelo_banco_deixa_o_exemplo_de_fora(pasta_case, tmp_path, capsys):
+    caminho = tmp_path / "e.db"
+    s = db.conectar(caminho, dados_exemplo=True)
+    db.importar(s, ingerir(pasta_case), empresa="Empresa real")
+    s.close()
+    assert main(["experimento", "--db", str(caminho), "--rapido", "--saida", str(tmp_path / "r"),
+                 "--modelos", str(tmp_path / "m")]) == 0
+    out = capsys.readouterr().out
+    assert "Dados de exemplo deixados de fora" in out and "treino: 12 amostras" in out
+
+
+def test_prever_sem_modelo_explica(tmp_path, capsys):
+    assert main(["prever", "--entrada", str(tmp_path), "--modelo", str(tmp_path / "nada")]) == 1
+    assert "rode `fiep experimento`" in capsys.readouterr().err
