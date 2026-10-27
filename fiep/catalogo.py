@@ -16,7 +16,7 @@ from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.svm import SVC, SVR
 
 from .sisso import SissoClassificador
@@ -32,10 +32,10 @@ def _l1(**kw):
     return LogisticRegression(solver="liblinear", **pen, **kw)
 
 
-def _pipe(est, escalar=True):
+def _pipe(est, escalar=True, escalador=None):
     passos = [("imputar", SimpleImputer(strategy="median"))]
     if escalar:
-        passos.append(("escalar", StandardScaler()))
+        passos.append(("escalar", escalador if escalador is not None else StandardScaler()))
     return Pipeline(passos + [("est", est)])
 
 
@@ -61,6 +61,12 @@ def classificadores(seed: int = 42, rapido: bool = False) -> dict:
                                                   random_state=seed),
         "mlp": _pipe(MLPClassifier(hidden_layer_sizes=(64, 32), alpha=1e-3, max_iter=2000, early_stopping=True,
                                    random_state=seed)),
+        # receita de Aliev et al. (2024), Biosens. Bioelectron. 259:116377 (E. coli por voltametria cíclica):
+        # 3 camadas ocultas de 250 neurônios, taxa de aprendizado 1e-3, parada antecipada, MinMaxScaler.
+        # A rede treinada deles não foi publicada; aqui é a mesma arquitetura treinada nos nossos dados.
+        "mlp_aliev2024": _pipe(MLPClassifier(hidden_layer_sizes=(250, 250, 250), learning_rate_init=1e-3,
+                                             max_iter=1000, early_stopping=True, random_state=seed),
+                               escalador=MinMaxScaler()),
         "naive_bayes": _pipe(GaussianNB()),
         "sisso": SissoClassificador(n_sis=25, max_dim=2),
     }
@@ -79,6 +85,9 @@ def regressores(seed: int = 42, rapido: bool = False) -> dict:
         "hist_gb": HistGradientBoostingRegressor(learning_rate=0.05, max_iter=300, random_state=seed),
         "mlp": _pipe(MLPRegressor(hidden_layer_sizes=(64, 32), alpha=1e-3, max_iter=3000, early_stopping=True,
                                   random_state=seed)),
+        "mlp_aliev2024": _pipe(MLPRegressor(hidden_layer_sizes=(250, 250, 250), learning_rate_init=1e-3,
+                                            max_iter=1000, early_stopping=True, random_state=seed),
+                               escalador=MinMaxScaler()),
     }
     if rapido:
         return {k: todos[k] for k in ("ridge", "random_forest")}
@@ -99,6 +108,7 @@ DESCRICAO_CLASSIFICADORES = {
     "extra_trees": ("Árvores", "Extra trees (500 árvores)"),
     "hist_gb": ("Árvores", "Gradient boosting por histogramas"),
     "mlp": ("Rede neural", "Perceptron multicamadas (64-32), parada antecipada"),
+    "mlp_aliev2024": ("Rede neural", "Rede do artigo de Aliev et al. 2024 (E. coli, CV): 3 camadas de 250, MinMax, parada antecipada"),
     "naive_bayes": ("Probabilístico", "Naive Bayes gaussiano"),
     "sisso": ("Interpretável", "SISSO simplificado: fórmula explícita com 1-2 descritores"),
 }
@@ -110,4 +120,5 @@ DESCRICAO_REGRESSORES = {
     "extra_trees": "Extra trees",
     "hist_gb": "Gradient boosting por histogramas",
     "mlp": "Rede neural (perceptron multicamadas)",
+    "mlp_aliev2024": "Rede neural de Aliev et al. 2024 (3 camadas de 250)",
 }

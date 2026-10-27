@@ -168,7 +168,7 @@ Sem instalar o pacote: `python -m fiep <comando>` na raiz do repositório.
 | `fiep db sql` | consulta livre (views: `v_medicoes`, `v_replicatas`, `v_qc_atual`, `v_predicoes`) | `fiep db sql "SELECT ..." [--saida x.csv]` |
 | `fiep db exportar` | banco inteiro para Excel (uma aba por tabela) ou CSV | `fiep db exportar --saida dados/banco.xlsx` · `--formato csv --saida pasta/` |
 | `fiep db exemplo` | carrega / remove o case de demonstração | `fiep db exemplo` · `fiep db exemplo --remover` |
-| `fiep experimento` | divide 50/25/25, compara 5 representações × 14 algoritmos (ou só os escolhidos), escolhe na validação, mede no teste, registra o melhor | `fiep experimento [--artigo] [--rapido]` · `fiep experimento --db dados/fiep.db [--filtro "empresa_id = 2"] [--filtro-teste "..."] [--com-exemplo]` · `fiep experimento --algoritmos mlp,random_forest,svm_rbf --variantes dif_curva [--nao-ativar]` |
+| `fiep experimento` | divide 50/25/25, compara 5 representações × 15 algoritmos (ou só os escolhidos), escolhe na validação, mede no teste, registra o melhor | `fiep experimento [--artigo] [--rapido]` · `fiep experimento --db dados/fiep.db [--filtro "empresa_id = 2"] [--filtro-teste "..."] [--com-exemplo]` · `fiep experimento --algoritmos mlp,random_forest,svm_rbf --variantes dif_curva [--nao-ativar]` |
 | `fiep modelos listar` | todos os modelos treinados com acurácia, acurácia balanceada, AUC e por amostra no teste (`*` = em uso) | `fiep modelos listar` |
 | `fiep modelos mostrar` | métricas de um modelo e a comparação de todos os algoritmos testados | `fiep modelos mostrar [--id <id>]` (sem `--id`: o modelo em uso) |
 | `fiep modelos ativar` | troca o modelo usado pela plataforma e pelo `fiep prever` | `fiep modelos ativar --id <id>` |
@@ -248,9 +248,11 @@ docker run -p 8000:8000 -e FIEP_SECRET="..." -e FIEP_ADMIN_EMAIL=voce@exemplo.or
 
 - **Representações** (5): descritores de pico + diferenças entre etapas; curva de diferença
   completa; idem com linha de base; idem sem suavização; só a etapa final.
-- **Algoritmos** (14): regressão logística (L2 em 3 intensidades e L1), LDA, SVM RBF (2), kNN, floresta
-  aleatória, extra trees, gradient boosting, **rede neural MLP**, naive Bayes e **SISSO** simplificado
-  (fórmula explícita). Lista com nomes: `fiep modelos catalogo`. Para testar só alguns:
+- **Algoritmos** (15): regressão logística (L2 em 3 intensidades e L1), LDA, SVM RBF (2), kNN, floresta
+  aleatória, extra trees, gradient boosting, **rede neural MLP**, a rede de **Aliev et al. (2024)**
+  (`mlp_aliev2024`: 3 camadas de 250 neurônios, MinMaxScaler, taxa 1e-3, parada antecipada — a
+  arquitetura do artigo de E. coli por voltametria, treinada nos nossos dados, porque a rede
+  treinada deles não foi publicada), naive Bayes e **SISSO** simplificado (fórmula explícita). Lista com nomes: `fiep modelos catalogo`. Para testar só alguns:
   `fiep experimento --algoritmos mlp,svm_rbf --variantes dif_curva` ou o botão **Treinar modelos**
   na tela Modelos. Para incluir outro algoritmo, acrescente-o em `fiep/catalogo.py`.
 - **Protocolo**: treino 50% (validação cruzada agrupada por amostra → limiar de Youden), escolha na
