@@ -6,8 +6,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from fiep import registro
-from fiep.catalogo import DESCRICAO_CLASSIFICADORES, DESCRICAO_REGRESSORES
-from fiep.experimentos import DESCRICAO_VARIANTES, VARIANTES
+from fiep.catalogo import INFO_CLASSIFICADORES, INFO_REGRESSORES
+from fiep.experimentos import INFO_VARIANTES, VARIANTES
 from fiep.orm import Usuario
 
 from ..deps import pode_editar, so_admin, usuario_atual
@@ -33,10 +33,12 @@ def _pastas(request: Request):
 
 @r.get("/catalogo")
 def catalogo(_=Depends(usuario_atual)):
+    """Algoritmos, representações e regressores com nome legível e explicação (tooltips da plataforma)."""
     return {
-        "algoritmos": [{"id": k, "familia": f, "descricao": t} for k, (f, t) in DESCRICAO_CLASSIFICADORES.items()],
-        "variantes": [{"id": k, "descricao": DESCRICAO_VARIANTES.get(k, k)} for k in VARIANTES],
-        "regressores": [{"id": k, "descricao": t} for k, t in DESCRICAO_REGRESSORES.items()],
+        "algoritmos": [{"id": k, **v, "descricao": f"{v['nome']} — {v['ajuste']}"} for k, v in INFO_CLASSIFICADORES.items()],
+        "variantes": [{"id": k, **INFO_VARIANTES.get(k, {"nome": k, "o_que": ""}),
+                       "descricao": INFO_VARIANTES.get(k, {}).get("o_que", k)} for k in VARIANTES],
+        "regressores": [{"id": k, **v, "descricao": f"{v['nome']} — {v['ajuste']}"} for k, v in INFO_REGRESSORES.items()],
     }
 
 
@@ -85,7 +87,7 @@ def treino(tid: str, request: Request, _=Depends(usuario_atual)):
 
 @r.post("/treinos", status_code=202)
 def novo_treino(dados: NovoTreino, request: Request, u: Usuario = Depends(pode_editar)):
-    algs = [a for a in dados.algoritmos if a not in DESCRICAO_CLASSIFICADORES]
+    algs = [a for a in dados.algoritmos if a not in INFO_CLASSIFICADORES]
     vars_ = [v for v in dados.variantes if v not in VARIANTES]
     if algs or vars_:
         raise HTTPException(400, f"Desconhecidos: {algs + vars_}")

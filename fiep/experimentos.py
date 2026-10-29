@@ -50,13 +50,30 @@ VARIANTES = {
                                "preprocessamento": {"suavizar": False}},
     "estagio_final": {"features": {"modo": "estagio_unico"}},
 }
-DESCRICAO_VARIANTES = {
-    "dif_resumo": "descritores de pico por estágio + diferenças entre estágios",
-    "dif_curva": "idem + curva de diferença completa (último − penúltimo estágio)",
-    "dif_curva_linha_base": "dif_curva com linha de base linear removida",
-    "dif_curva_sem_suavizar": "dif_curva sem suavização Savitzky-Golay",
-    "estagio_final": "só o estágio final do sensor (sem diferença entre estágios)",
+# Nomes legíveis das representações (plataforma, `fiep modelos`, relatórios).
+INFO_VARIANTES = {
+    "dif_resumo": dict(
+        nome="Descritores de pico",
+        o_que="Para cada etapa: corrente e potencial do pico, amplitude, área e largura; mais as diferenças "
+              "entre a última etapa e as anteriores. Poucas características (cerca de 25)."),
+    "dif_curva": dict(
+        nome="Curva de diferença entre etapas",
+        o_que="Os descritores de pico mais a curva inteira da diferença última − penúltima etapa, ponto a "
+              "ponto (cerca de 150 características). É a mudança causada pelo alvo no mesmo eletrodo."),
+    "dif_curva_linha_base": dict(
+        nome="Curva de diferença, sem linha de base",
+        o_que="Como a curva de diferença, mas antes cada curva tem a linha de base (reta entre as pontas) "
+              "removida; reduz deslocamentos de fundo entre eletrodos."),
+    "dif_curva_sem_suavizar": dict(
+        nome="Curva de diferença, sem suavização",
+        o_que="Como a curva de diferença, sem o filtro de Savitzky-Golay: mantém detalhes finos e também o "
+              "ruído."),
+    "estagio_final": dict(
+        nome="Só a etapa final",
+        o_que="Só a curva da última etapa, sem comparar com as anteriores. Serve para medir quanto a "
+              "diferença entre etapas ajuda."),
 }
+DESCRICAO_VARIANTES = {k: f"{v['nome']}: {v['o_que']}" for k, v in INFO_VARIANTES.items()}
 ROTULO = "contamination_status"
 ALVO_REG = "sample_log10_mean_cfu_ml"
 

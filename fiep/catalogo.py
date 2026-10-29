@@ -94,31 +94,130 @@ def regressores(seed: int = 42, rapido: bool = False) -> dict:
     return todos
 
 
-# Descrições para a plataforma e a documentação (nome -> (família, texto)).
-DESCRICAO_CLASSIFICADORES = {
-    "log_reg": ("Linear", "Regressão logística (L2, C=1)"),
-    "log_reg_C0.1": ("Linear", "Regressão logística mais regularizada (C=0,1)"),
-    "log_reg_C0.01": ("Linear", "Regressão logística muito regularizada (C=0,01)"),
-    "log_reg_l1": ("Linear", "Regressão logística L1 (seleciona características)"),
-    "lda": ("Linear", "Análise discriminante linear com encolhimento"),
-    "svm_rbf": ("Kernel", "SVM com núcleo RBF (C=1), calibrada"),
-    "svm_rbf_C10": ("Kernel", "SVM com núcleo RBF (C=10), calibrada"),
-    "knn": ("Vizinhança", "k vizinhos mais próximos (k=7)"),
-    "random_forest": ("Árvores", "Floresta aleatória (500 árvores)"),
-    "extra_trees": ("Árvores", "Extra trees (500 árvores)"),
-    "hist_gb": ("Árvores", "Gradient boosting por histogramas"),
-    "mlp": ("Rede neural", "Perceptron multicamadas (64-32), parada antecipada"),
-    "mlp_aliev2024": ("Rede neural", "Rede do artigo de Aliev et al. 2024 (E. coli, CV): 3 camadas de 250, MinMax, parada antecipada"),
-    "naive_bayes": ("Probabilístico", "Naive Bayes gaussiano"),
-    "sisso": ("Interpretável", "SISSO simplificado: fórmula explícita com 1-2 descritores"),
+# ----------------------------------------------------------------------------- nomes legíveis
+# Fonte única dos nomes mostrados na plataforma, no `fiep modelos` e nos relatórios.
+# nome: o que é; ajuste: o que distingue esta variação (hiperparâmetros); familia: grupo;
+# o_que: como funciona, em uma ou duas frases; parametros: o que os números querem dizer.
+INFO_CLASSIFICADORES = {
+    "log_reg": dict(
+        nome="Regressão logística", ajuste="regularização padrão, C = 1", familia="Linear",
+        o_que="Modelo linear: uma soma ponderada das características vira a probabilidade de contaminação. "
+              "Rápido, estável com poucas amostras e fácil de interpretar (os pesos mostram o que importa).",
+        parametros="C é o inverso da força da regularização, que segura os pesos para o modelo não decorar o "
+                   "treino. C = 1 é o padrão. Penalidade L2 (encolhe todos os pesos). Classes balanceadas: a "
+                   "classe com menos amostras pesa mais."),
+    "log_reg_C0.1": dict(
+        nome="Regressão logística", ajuste="regularização forte, C = 0,1", familia="Linear",
+        o_que="A mesma regressão logística, com os pesos mais contidos.",
+        parametros="C = 0,1: regularização 10 vezes mais forte que o padrão (C = 1). Modelo mais simples, "
+                   "menos sujeito a overfitting quando há muitas características (ex.: a curva inteira) e "
+                   "poucas amostras."),
+    "log_reg_C0.01": dict(
+        nome="Regressão logística", ajuste="regularização muito forte, C = 0,01", familia="Linear",
+        o_que="A mesma regressão logística, com os pesos bem contidos.",
+        parametros="C = 0,01: regularização 100 vezes mais forte que o padrão. O modelo fica quase uma média "
+                   "das características; serve para ver se um modelo bem simples já basta."),
+    "log_reg_l1": dict(
+        nome="Regressão logística esparsa", ajuste="L1, escolhe as características, C = 0,5", familia="Linear",
+        o_que="Regressão logística que zera os pesos das características pouco úteis: o próprio modelo "
+              "escolhe quais pontos da curva ou descritores usar.",
+        parametros="Penalidade L1 (a que zera pesos) com C = 0,5, um pouco mais forte que o padrão."),
+    "lda": dict(
+        nome="Análise discriminante linear (LDA)", ajuste="com encolhimento automático", familia="Linear",
+        o_que="Supõe que cada classe é uma nuvem com a mesma forma e traça a fronteira reta entre elas. "
+              "Clássico em quimiometria.",
+        parametros="Encolhimento (Ledoit-Wolf) estabiliza a estimativa das covariâncias quando há mais "
+                   "características do que amostras."),
+    "svm_rbf": dict(
+        nome="SVM com núcleo RBF", ajuste="margem larga, C = 1", familia="Kernel",
+        o_que="Máquina de vetores de suporte: procura a fronteira que deixa a maior margem entre as classes; "
+              "o núcleo RBF permite fronteiras curvas. As probabilidades são calibradas.",
+        parametros="C = 1: aceita alguns erros no treino em troca de uma margem mais larga (mais robusto)."),
+    "svm_rbf_C10": dict(
+        nome="SVM com núcleo RBF", ajuste="margem justa, C = 10", familia="Kernel",
+        o_que="A mesma SVM, ajustando-se mais aos dados de treino.",
+        parametros="C = 10: penaliza 10 vezes mais os erros no treino que o padrão; fronteira mais detalhada, "
+                   "com mais risco de overfitting."),
+    "knn": dict(
+        nome="k vizinhos mais próximos", ajuste="7 vizinhos", familia="Vizinhança",
+        o_que="Classifica pela maioria das amostras de treino mais parecidas, com peso maior para as mais "
+              "próximas. Não aprende parâmetros; sofre com características irrelevantes.",
+        parametros="k = 7 vizinhos, ponderados pela distância (características padronizadas)."),
+    "random_forest": dict(
+        nome="Floresta aleatória", ajuste="500 árvores", familia="Árvores",
+        o_que="Média de muitas árvores de decisão, cada uma treinada com uma reamostragem dos dados e um "
+              "sorteio de características. Captura relações não lineares; pouco sensível à configuração.",
+        parametros="500 árvores, classes balanceadas, profundidade livre."),
+    "extra_trees": dict(
+        nome="Extra trees", ajuste="500 árvores, cortes sorteados", familia="Árvores",
+        o_que="Como a floresta aleatória, mas os pontos de corte das árvores são sorteados; costuma variar "
+              "menos de um conjunto de dados para outro.",
+        parametros="500 árvores, classes balanceadas."),
+    "hist_gb": dict(
+        nome="Gradient boosting", ajuste="300 rodadas, taxa 0,05", familia="Árvores",
+        o_que="Árvores pequenas treinadas em sequência, cada uma corrigindo os erros das anteriores (versão "
+              "por histogramas, como o LightGBM). Muitas vezes o mais preciso em tabelas; pode sobreajustar "
+              "com poucas amostras.",
+        parametros="Até 300 rodadas com taxa de aprendizado 0,05 (passos pequenos), classes balanceadas."),
+    "mlp": dict(
+        nome="Rede neural (MLP)", ajuste="2 camadas: 64 e 32 neurônios", familia="Rede neural",
+        o_que="Perceptron multicamadas: camadas de neurônios aprendem combinações não lineares das "
+              "características.",
+        parametros="Camadas ocultas de 64 e 32 neurônios, regularização alpha = 0,001 e parada antecipada "
+                   "(para quando uma parte separada do treino deixa de melhorar)."),
+    "mlp_aliev2024": dict(
+        nome="Rede neural de Aliev et al. (2024)", ajuste="3 camadas de 250 neurônios", familia="Rede neural",
+        o_que="Arquitetura do artigo de detecção de E. coli por voltametria cíclica (Biosensors and "
+              "Bioelectronics 259:116377), treinada nos nossos dados: a rede original não foi publicada. "
+              "Rede grande; precisa de muitas amostras.",
+        parametros="3 camadas ocultas de 250 neurônios, taxa de aprendizado 0,001, parada antecipada, dados "
+                   "normalizados entre 0 e 1 (MinMax), como no artigo."),
+    "naive_bayes": dict(
+        nome="Naive Bayes", ajuste="gaussiano", familia="Probabilístico",
+        o_que="Supõe que cada característica é independente das outras e tem distribuição normal em cada "
+              "classe. Muito simples; serve de referência mínima.",
+        parametros="Sem hiperparâmetros a ajustar."),
+    "sisso": dict(
+        nome="SISSO (fórmula explícita)", ajuste="até 2 descritores", familia="Interpretável",
+        o_que="Procura, entre combinações matemáticas dos descritores (somas, razões, logaritmos…), a "
+              "fórmula de 1 ou 2 termos que melhor separa as classes. O resultado é uma equação que dá para "
+              "escrever no artigo.",
+        parametros="25 candidatos pré-selecionados por correlação (SIS) e fórmula com no máximo 2 termos."),
 }
-DESCRICAO_REGRESSORES = {
-    "ridge": "Ridge (regularização escolhida por validação)",
-    "pls": "Mínimos quadrados parciais (5 componentes)",
-    "svr": "Regressão por vetores de suporte",
-    "random_forest": "Floresta aleatória",
-    "extra_trees": "Extra trees",
-    "hist_gb": "Gradient boosting por histogramas",
-    "mlp": "Rede neural (perceptron multicamadas)",
-    "mlp_aliev2024": "Rede neural de Aliev et al. 2024 (3 camadas de 250)",
+
+INFO_REGRESSORES = {
+    "ridge": dict(nome="Regressão linear Ridge", ajuste="regularização escolhida por validação",
+                  o_que="Reta (hiperplano) com os pesos contidos; a força da regularização é escolhida "
+                        "automaticamente entre 0,01 e 100."),
+    "pls": dict(nome="Mínimos quadrados parciais (PLS)", ajuste="5 componentes",
+                o_que="Resume as características em 5 componentes ligados à carga e faz a regressão neles. "
+                      "Clássico em quimiometria para curvas inteiras."),
+    "svr": dict(nome="Regressão por vetores de suporte (SVR)", ajuste="núcleo RBF, C = 10",
+                o_que="Versão de regressão da SVM; aceita relações não lineares."),
+    "random_forest": dict(nome="Floresta aleatória", ajuste="500 árvores",
+                          o_que="Média de 500 árvores de regressão."),
+    "extra_trees": dict(nome="Extra trees", ajuste="500 árvores", o_que="Floresta com cortes sorteados."),
+    "hist_gb": dict(nome="Gradient boosting", ajuste="300 rodadas, taxa 0,05",
+                    o_que="Árvores em sequência, cada uma corrigindo as anteriores."),
+    "mlp": dict(nome="Rede neural (MLP)", ajuste="64 e 32 neurônios", o_que="Perceptron multicamadas."),
+    "mlp_aliev2024": dict(nome="Rede neural de Aliev et al. (2024)", ajuste="3 camadas de 250 neurônios",
+                          o_que="Arquitetura do artigo de E. coli por voltametria cíclica."),
 }
+
+
+def nome_classificador(cid: str, curto: bool = False) -> str:
+    """Nome legível ("Regressão logística — regularização forte, C = 0,1"). Desconhecido: o próprio id."""
+    i = INFO_CLASSIFICADORES.get(cid)
+    if not i:
+        return cid
+    return i["nome"] if curto else f"{i['nome']} — {i['ajuste']}"
+
+
+def nome_regressor(rid: str) -> str:
+    i = INFO_REGRESSORES.get(rid)
+    return f"{i['nome']} — {i['ajuste']}" if i else rid
+
+
+# Compatibilidade: (família, texto) e texto, como antes.
+DESCRICAO_CLASSIFICADORES = {k: (v["familia"], f"{v['nome']} — {v['ajuste']}") for k, v in INFO_CLASSIFICADORES.items()}
+DESCRICAO_REGRESSORES = {k: f"{v['nome']} — {v['ajuste']}" for k, v in INFO_REGRESSORES.items()}
