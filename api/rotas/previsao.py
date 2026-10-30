@@ -56,8 +56,15 @@ async def api_prever(request: Request, arquivos: list[UploadFile] = File(...), c
         if salvar and len(res):
             db.gravar_predicoes(s, res, pacote["cartao"], modelo.pasta, usuario_id=u.id)
         avisos = ds.relatorio.loc[ds.relatorio["tipo"] == "aviso", "detalhe"].astype(str).tolist()
+        from fiep.picos import picos
+        from fiep.protocolos import nomes_estagios
+        pk = picos(ds.medicoes, ds.pontos)
+        if len(pk):
+            nomes = nomes_estagios(pacote["cfg"])
+            pk["etapa"] = pk["sensor_state"].map(lambda e: nomes.get(e, e) if isinstance(e, str) else None)
         return {"modelo": pacote["cartao"]["id"], "algoritmo": pacote["cartao"]["modelo"],
-                "limiar": pacote["limiar"], "amostras": registros(am), "resultados": registros(res),
+                "limiar": pacote["limiar"], "por_etapa": pacote["cartao"].get("por_etapa") or {},
+                "picos": registros(pk), "amostras": registros(am), "resultados": registros(res),
                 "resumo": res["resultado"].value_counts().to_dict() if len(res) else {}, "avisos": avisos}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

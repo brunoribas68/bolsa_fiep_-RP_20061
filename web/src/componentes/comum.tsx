@@ -50,6 +50,7 @@ const CHIP_RESULTADO: Record<string, { cor: ChipProps["color"]; texto: string }>
   "NÃO CONTAMINADA": { cor: "success", texto: "Não contaminada" },
   "REPETIR MEDIÇÃO": { cor: "warning", texto: "Repetir medição" },
   "SEM PREVISÃO": { cor: "default", texto: "Sem previsão" },
+  "INCONCLUSIVO": { cor: "warning", texto: "Inconclusivo" },
 };
 
 export function ChipResultado({ r, size = "small" }: { r: string | null | undefined; size?: ChipProps["size"] }) {

@@ -104,6 +104,23 @@ No Excel, a técnica vem do nome/procedimento ou das colunas (forward/backward =
 Para testar mais modelos, acrescente-os em `fiep/catalogo.py`; para outra representação, em
 `VARIANTES` de `fiep/experimentos.py`.
 
+## Eletrodos sem todas as etapas
+
+`modelos_por_etapa` (`fiep/experimentos.py`) treina, para cada etapa do protocolo, um classificador só
+com aquela etapa (representação `estagio_unico`: descritores de pico + curva), escolhendo entre
+regressão logística L1, LDA e floresta aleatória pela validação e medindo no teste. Os modelos vão no
+pacote (`por_etapa`) e as métricas no cartão. Em `fiep/predict.py`, um eletrodo sem todas as etapas é
+previsto com o(s) modelo(s) da(s) etapa(s) que existem (`base = "etapa única (...)"`); se a acurácia
+balanceada no teste desse modelo for menor que 0,7 (`BA_CONFIAVEL`), o resultado é `INCONCLUSIVO`.
+No resumo por amostra, eletrodos completos têm prioridade sobre os de etapa única.
+
+## Picos
+
+`fiep/features.py:achar_pico` procura o máximo local de maior proeminência no miolo (90%) da faixa de
+potencial — o máximo absoluto costuma estar na ponta da varredura. `fiep/picos.py` usa a mesma busca
+para a tabela de picos: DPV/SWV (E e I de pico, base, altura, largura a meia altura) e CV no último
+ciclo (Epa, Ipa, Epc, Ipc, ΔEp, E½, Ipa/|Ipc|).
+
 ## Registro dos modelos
 
 `modelos/<id>/modelo.joblib` (modelo + regressor + grade + config + features + limiar) e

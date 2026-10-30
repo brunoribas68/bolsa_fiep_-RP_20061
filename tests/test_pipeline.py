@@ -112,4 +112,6 @@ def test_predicao_explica_replicata_incompleta(pasta_case, tmp_path):
     sinal[sinal.measurement_id.isin(meta[keep].measurement_id)].to_csv(d / "s.csv", index=False)
     meta[keep].to_csv(d / "m.csv", index=False)
     res = prever(d, carregar(tmp_path / "m"))
-    assert res.iloc[0]["status"] == "incompleta" and "carbon_clean" in res.iloc[0]["motivo"]
+    # modelo do `fiep treinar` não tem modelos de etapa única: explica o que falta e como resolver
+    assert res.iloc[0]["status"] == "incompleta" and "Carbono limpo" in res.iloc[0]["motivo"]
+    assert "treine de novo" in res.iloc[0]["motivo"]

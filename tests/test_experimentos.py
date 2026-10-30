@@ -8,7 +8,7 @@ from fiep.divisao import montar
 from fiep.experimentos import rodar
 from fiep.ingest import ingerir
 from fiep.model import carregar
-from fiep.predict import prever
+from fiep.predict import prever, resumo_por_amostra
 from fiep.sisso import SissoClassificador
 
 from .conftest import gerar_case
@@ -48,6 +48,26 @@ def test_experimento_rapido_registra_modelo_e_gera_artefatos(pasta_case, tmp_pat
     meta.drop(columns="contamination_status").assign(contamination_status=np.nan).to_csv(nova / "m.csv", index=False)
     out = prever(nova, pacote)
     assert (out["status"] == "avaliada").all()
+    assert (out["base"] == "etapas completas").all()
+
+    # eletrodo só com a 1ª etapa (ex.: só o eletrodo tratado): previsão pelo modelo daquela etapa, com aviso
+    assert set(res["por_etapa"]) == {"carbon_clean", "capture_probe", "capture_probe_16S_rRNA"}
+    assert "carbon_clean" in pacote["por_etapa"]
+    so1 = tmp_path / "so_primeira"
+    so1.mkdir()
+    um = meta[meta["sensor_state"] == "carbon_clean"]
+    sinal[sinal["measurement_id"].isin(um["measurement_id"])].to_csv(so1 / "s.csv", index=False)
+    um.drop(columns="contamination_status").assign(contamination_status=np.nan).to_csv(so1 / "m.csv", index=False)
+    o1 = prever(so1, pacote)
+    assert o1["base"].str.startswith("etapa única").all() and o1["prob_contaminada"].notna().all()
+    assert o1["motivo"].str.contains("previsão só com a etapa Carbono limpo").all()
+    # a etapa do eletrodo limpo não separa as classes no case: o resultado sai inconclusivo, e não um palpite
+    ba = res["por_etapa"]["carbon_clean"]["teste_balanced_accuracy"]
+    esperado = "inconclusiva" if ba < 0.7 else "avaliada"
+    assert (o1["status"] == esperado).all()
+    am = resumo_por_amostra(o1)
+    assert (am["base"] == "etapa única").all()
+    assert am["resultado"].isin(["INCONCLUSIVO"] if ba < 0.7 else ["CONTAMINADA", "NÃO CONTAMINADA"]).all()
 
 
 def test_experimento_com_pasta_de_teste(pasta_case, tmp_path):

@@ -50,13 +50,22 @@ export interface Curva {
 export interface PrevisaoAmostra {
   sample_id: string; resultado: string; prob_contaminada: number | null; replicas_avaliadas: number;
   replicas_total: number; concordancia: number | null; log10_ufc_ml_estimado: number | null;
-  nivel_contaminacao: string; rotulo_informado: number | null;
+  nivel_contaminacao: string; rotulo_informado: number | null; base?: string;
 }
 
 export interface PrevisaoReplica {
   sample_id: string | null; replicate_id: string | null; measurement_id: string | null; status: string;
   resultado: string; prob_contaminada: number | null; log10_ufc_ml_estimado: number | null;
-  nivel_contaminacao?: string; motivo: string | null;
+  nivel_contaminacao?: string; motivo: string | null; base?: string | null;
+}
+
+/** Picos de uma medição: DPV/SWV (e_pico...) ou CV (epa, epc...). */
+export interface Pico {
+  measurement_id: string; sample_id: string | null; replicate_id: string | null; sensor_state: string | null;
+  etapa?: string | null; tecnica: string | null; arquivo: string | null;
+  e_pico_v?: number | null; i_pico_ua?: number | null; i_base_ua?: number | null; altura_ua?: number | null;
+  largura_v?: number | null; epa_v?: number | null; ipa_ua?: number | null; epc_v?: number | null; ipc_ua?: number | null;
+  delta_ep_v?: number | null; e_meia_v?: number | null; razao_ipa_ipc?: number | null; ciclos?: number | null;
 }
 
 export const ESTAGIOS = ["carbon_clean", "capture_probe", "capture_probe_16S_rRNA"] as const;
