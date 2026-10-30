@@ -66,6 +66,7 @@ fiep verificar
 | `No module named 'fastapi'` / `jwt` | Faltou o extra da plataforma: `python -m pip install -e ".[api]"`. |
 | A página diz "Frontend não compilado" | `cd web`, `npm install`, `npm run build`. |
 | `table ... already exists` | Banco criado por uma versão antiga: atualize (`git pull`); o banco antigo é convertido sozinho e guardado como `dados/fiep.antigo-<data>.db`. |
+| A tela não mostra o que mudou (ex.: nomes dos algoritmos ainda como `log_reg_C0.1`) | O frontend é compilado: depois do `git pull`, `cd web`, `npm install`, `npm run build`; reinicie o `fiep servir` e recarregue a página com Ctrl+F5. |
 | Depois do `git pull` algo quebrou | Reinstale (`python -m pip install -e ".[api,dev]"`) e recompile o frontend (`cd web && npm install && npm run build`). |
 
 ---
@@ -168,6 +169,7 @@ Sem instalar o pacote: `python -m fiep <comando>` na raiz do repositório.
 | `fiep db sql` | consulta livre (views: `v_medicoes`, `v_replicatas`, `v_qc_atual`, `v_predicoes`) | `fiep db sql "SELECT ..." [--saida x.csv]` |
 | `fiep db exportar` | banco inteiro para Excel (uma aba por tabela) ou CSV | `fiep db exportar --saida dados/banco.xlsx` · `--formato csv --saida pasta/` |
 | `fiep db exemplo` | carrega / remove o case de demonstração | `fiep db exemplo` · `fiep db exemplo --remover` |
+| `fiep db zerar` | apaga todos os dados e recria o banco; guarda uma cópia em `dados/backup/`, mantém as contas de usuário e pede confirmação (digite ZERAR) | `fiep db zerar` · `fiep db zerar --sem-exemplo` · `fiep db zerar --sem-usuarios` · `fiep db zerar --sim` |
 | `fiep experimento` | divide 50/25/25, compara 5 representações × 15 algoritmos (ou só os escolhidos), escolhe na validação, mede no teste, registra o melhor | `fiep experimento [--artigo] [--rapido]` · `fiep experimento --db dados/fiep.db [--filtro "empresa_id = 2"] [--filtro-teste "..."] [--com-exemplo]` · `fiep experimento --algoritmos mlp,random_forest,svm_rbf --variantes dif_curva [--nao-ativar]` |
 | `fiep modelos listar` | todos os modelos treinados com acurácia, acurácia balanceada, AUC e por amostra no teste (`*` = em uso) | `fiep modelos listar` |
 | `fiep modelos mostrar` | métricas de um modelo e a comparação de todos os algoritmos testados | `fiep modelos mostrar [--id <id>]` (sem `--id`: o modelo em uso) |
@@ -201,7 +203,7 @@ Para os colaboradores enviarem as coletas das empresas. Detalhes: [`docs/PLATAFO
 | Coletas | cada envio, quem enviou e quando; avisos (eletrodos sem as 3 etapas, QC) |
 | Amostras | busca e filtros; rótulo e carga editáveis na tabela |
 | Amostra | voltamogramas por eletrodo (3 etapas sobrepostas), medições com QC e etapa editável, plaqueamento, **Prever com o modelo** |
-| Previsão | classifica arquivos sem gravar; converte `.nox` para Excel |
+| Previsão | classifica arquivos sem gravar; mostra os **picos** de cada arquivo (DPV/SWV: potencial, corrente, base, altura e largura do pico; CV: Epa, Ipa, Epc, Ipc, ΔEp, E½, Ipa/\|Ipc\|) com média ± desvio e CSV; converte `.nox` para Excel |
 | Empresas | cadastro das empresas validadoras |
 | Usuários (admin) | criar contas, perfil, desativar, redefinir senha |
 | Minha conta | trocar a própria senha |
@@ -259,6 +261,18 @@ docker run -p 8000:8000 -e FIEP_SECRET="..." -e FIEP_ADMIN_EMAIL=voce@exemplo.or
   validação 25%, re-treino com treino + validação e avaliação **uma única vez** no teste 25%.
 - **Resultado por amostra**: média das probabilidades dos eletrodos aprovados no QC, com a
   concordância entre eles.
+- **Medição única** (uma medição por eletrodo, ex.: só DPV em ferri/ferrocianeto): se os dados de
+  treino só têm uma etapa do protocolo, o experimento treina o modelo principal com essa medição
+  (picos + curva, representação "Só a etapa final") e a previsão sai como "medição única".
+- **Eletrodo sem todas as etapas** (ex.: só o eletrodo tratado): o experimento também treina um
+  **modelo para cada etapa sozinha** (picos e curva daquela etapa) e mede a acurácia dele no teste. Na
+  previsão, um eletrodo incompleto usa esse modelo e aparece como "só uma etapa". Se a etapa sozinha
+  não separa as classes no teste (acurácia balanceada < 0,7), o resultado é **INCONCLUSIVO** em vez
+  de um palpite. Eletrodos com todas as etapas sempre têm prioridade. Modelos treinados antes desta
+  versão não têm os modelos por etapa: treine de novo.
+- **Picos**: potencial e corrente de pico procurados como máximo local mais destacado, longe das
+  pontas da varredura (onde a corrente sobe pela dupla camada); valem para os descritores do modelo
+  e para a tabela de picos da Previsão (DPV/SWV e CV: Epa, Epc, ΔEp, E½, Ipa/|Ipc|).
 - **Carga e níveis**: regressão da carga (log10 UFC/mL) nas contaminadas; com `[niveis]`
   configurado (ex.: `limites_log10 = [3.0, 5.0]`, `nomes = ["baixa", "moderada", "alta"]`) a carga
   vira nível de contaminação — os limites são decisão da equipe e mudam sem re-treinar.

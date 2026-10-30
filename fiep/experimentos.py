@@ -158,6 +158,80 @@ def _fmt(x):
     return f"{x:.3f}" if isinstance(x, (int, float)) and np.isfinite(x) else "--"
 
 
+CANDIDATOS_ETAPA = ("log_reg_l1", "lda", "random_forest")
+
+
+def modelos_por_etapa(div: Divisao, cfg: dict, seed: int = 42, n_folds: int = 5, candidatos=CANDIDATOS_ETAPA) -> dict:
+    """Um classificador para CADA etapa sozinha (só a curva daquela etapa, sem diferença entre etapas).
+
+    É o plano B da previsão: quando chega um eletrodo sem todas as etapas (ex.: só o eletrodo tratado),
+    a previsão usa o modelo da etapa que existe e avisa que é uma previsão de etapa única. A escolha
+    entre `candidatos` é pela validação, o re-treino usa treino + validação e o teste mede o
+    desempenho real, que vai junto no cartão — uma etapa que não separa as classes aparece assim."""
+    modelos = classificadores(seed)
+    out = {}
+    for e in cfg["dados"]["estagios"]:
+        cfg_e = _merge(copy.deepcopy(cfg), {"features": {"modo": "estagio_unico", "estagio_unico": e,
+                                                         "curva_delta_completa": False}})
+        try:
+            tabs, grade, _ = _tabelas(div, cfg_e)
+        except ValueError as ex:
+            log.info("Etapa %s sem modelo próprio: %s", e, ex)
+            continue
+        tr, va, te = tabs["treino"], tabs["validacao"], tabs["teste"]
+        if tr.empty or tr[ROTULO].nunique() < 2:
+            continue
+        feats = colunas_features(tr)
+        X, y, g = _xy(tr, feats)
+        k = min(n_folds, len(set(g)), int(np.bincount(y).min()))
+        if k < 2:
+            continue
+        melhor = None
+        for nome in candidatos:
+            if nome not in modelos:
+                continue
+            try:
+                _, lim, met, _ = _cv_classificacao(modelos[nome], X, y, g, k, seed)
+                crit, mv = met["balanced_accuracy"], {}
+                if len(va) and va[ROTULO].nunique() == 2:
+                    Xv, yv, _ = _xy(va, feats)
+                    mv = _metricas(yv, clone(modelos[nome]).fit(X, y).predict_proba(Xv)[:, 1], lim)
+                    crit = mv["balanced_accuracy"]
+            except Exception as ex:  # noqa: BLE001
+                log.warning("etapa %s / %s falhou: %s", e, nome, ex)
+                continue
+            if melhor is None or crit > melhor[0]:
+                melhor = (crit, nome, lim, met, mv)
+        if melhor is None:
+            continue
+        _, nome, lim, met, mv = melhor
+        trva = pd.concat([tr, va], ignore_index=True) if len(va) else tr
+        Xa, ya, _ = _xy(trva, feats)
+        final = clone(modelos[nome]).fit(Xa, ya)
+        mt = {}
+        if len(te) and te[ROTULO].nunique() == 2:
+            Xt, yt, _ = _xy(te, feats)
+            mt = _metricas(yt, final.predict_proba(Xt)[:, 1], lim)
+        out[e] = {"estagio": e, "algoritmo": nome, "modelo": final, "features": feats, "grade": grade,
+                  "cfg": cfg_e, "limiar": float(lim),
+                  "metricas": {"cv_balanced_accuracy": met["balanced_accuracy"],
+                               "val_balanced_accuracy": mv.get("balanced_accuracy"),
+                               "teste_balanced_accuracy": mt.get("balanced_accuracy"),
+                               "teste_roc_auc": mt.get("roc_auc"), "n_teste": int(len(te))}}
+        log.info("Etapa única %-24s %-14s val BA=%s teste BA=%s", e, nome, _fmt(mv.get("balanced_accuracy")),
+                 _fmt(mt.get("balanced_accuracy")))
+    return out
+
+
+def resumo_por_etapa(por_etapa: dict) -> dict:
+    """Parte do cartão (JSON) dos modelos de etapa única."""
+    def f(x):
+        return None if x is None or not np.isfinite(x) else round(float(x), 4)
+    return {e: {"algoritmo": d["algoritmo"], "limiar": round(d["limiar"], 4),
+                **{k: (f(v) if k != "n_teste" else v) for k, v in d["metricas"].items()}}
+            for e, d in por_etapa.items()}
+
+
 def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
           pasta_modelos: str | Path = "modelos", variantes: list[str] | None = None, rapido: bool = False,
           registrar: bool = True, algoritmos: list[str] | None = None, ativar: bool = True,
@@ -174,6 +248,19 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
     div = dados if isinstance(dados, Divisao) else montar(dados, {}, cfg)
     from .protocolos import ajustar
     cfg = ajustar(cfg, div.treino)           # etapas e técnica do protocolo dos dados (gravadas no modelo)
+    # medição única: os dados de treino só têm UMA etapa do protocolo (ex.: só o eletrodo tratado em
+    # ferri/ferrocianeto). Aí o modelo principal é de etapa única, com os picos e a curva dessa medição.
+    med_tr = div.treino.medicoes
+    if "tecnica" in med_tr and cfg["dados"].get("tecnica"):
+        med_tr = med_tr[med_tr["tecnica"].fillna(cfg["dados"]["tecnica"]) == cfg["dados"]["tecnica"]]
+    presentes = [e for e in cfg["dados"].get("estagios", []) if e in set(med_tr.get("sensor_state", []))]
+    etapa_unica = len(presentes) == 1
+    if etapa_unica:
+        cfg = copy.deepcopy(cfg)
+        cfg["dados"]["estagios"] = presentes
+        cfg.setdefault("features", {})["estagio_unico"] = presentes[0]
+        log.warning("Só a etapa %s nos dados de treino: modelo de medição única (representação estagio_final).",
+                    presentes[0])
     log.info("Protocolo: %s (%s; etapas %s)", cfg["dados"].get("protocolo"), cfg["dados"]["tecnica"],
              " -> ".join(cfg["dados"]["estagios"]))
     seed = cfg["modelo"]["seed"]
@@ -183,6 +270,8 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
     pasta.mkdir(parents=True, exist_ok=True)
 
     variantes = variantes or (["dif_resumo", "dif_curva"] if rapido else list(VARIANTES))
+    if etapa_unica:                          # sem segunda etapa não existe diferença entre etapas
+        variantes = ["estagio_final"]
     modelos = classificadores(seed, rapido=rapido and not algoritmos)
     if algoritmos:
         desconhecidos = [a for a in algoritmos if a not in modelos]
@@ -335,6 +424,10 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
     if niveis_teste is not None:
         niveis_teste.to_csv(pasta / "niveis_teste.csv")
 
+    # ---------------- modelos de etapa única (previsão quando faltam etapas)
+    avisar("modelos de etapa única", 0.9)
+    por_etapa = modelos_por_etapa(div, cfg, seed, n_folds) if len(cfg["dados"].get("estagios") or []) > 1 else {}
+
     resumo = {
         "experimento": exp_id,
         "teste": div.descricao(),
@@ -359,6 +452,8 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
         "algoritmos": list(modelos), "variantes": list(variantes),
         "protocolo": cfg["dados"].get("protocolo"), "tecnica": cfg["dados"].get("tecnica"),
         "estagios": cfg["dados"].get("estagios"),
+        "medicao_unica": etapa_unica,
+        "por_etapa": resumo_por_etapa(por_etapa),
     }
 
     if registrar:
@@ -378,8 +473,10 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
                                            if k.startswith("val_")},
                     "metricas_teste": {k.replace("teste_", ""): melhor[k] for k in melhor.index
                                        if k.startswith("teste_")},
-                    "formula": formula, "regressor": melhor_reg["modelo"] if regressor_final is not None else None},
-            adicionais={"regressor": regressor_final})
+                    "formula": formula, "regressor": melhor_reg["modelo"] if regressor_final is not None else None,
+                    "por_etapa": resumo_por_etapa(por_etapa), "medicao_unica": etapa_unica,
+                    "estagios": cfg["dados"].get("estagios")},
+            adicionais={"regressor": regressor_final, "por_etapa": por_etapa})
         resumo["modelo_registrado"] = cartao["id"]
 
     (pasta / "resumo.json").write_text(json.dumps(resumo, indent=2, ensure_ascii=False, default=str), encoding="utf-8")

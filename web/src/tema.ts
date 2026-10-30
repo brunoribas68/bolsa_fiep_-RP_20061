@@ -37,7 +37,8 @@ export function criarTema(modo: PaletteMode) {
       MuiOutlinedInput: { defaultProps: { notched: true } },
       MuiTableCell: {
         styleOverrides: {
-          head: { fontWeight: 600, fontSize: 12, textTransform: "uppercase", letterSpacing: ".04em",
+          // sem caixa alta: ela estraga unidades (µA vira MA, mL vira ML)
+          head: { fontWeight: 600, fontSize: 12.5, letterSpacing: ".01em",
                   color: claro ? "#5b6472" : "#9aa5b4", whiteSpace: "nowrap" },
         },
       },

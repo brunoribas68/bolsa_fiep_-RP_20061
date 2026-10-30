@@ -18,12 +18,36 @@ NAO_FEATURES = {"sample_id", "replicate_id", "measurement_id", "contamination_st
                 "sample_log10_mean_cfu_ml", "sensor_lot", "target_bacterium", "experimental_batch"}
 
 
+def achar_pico(e: np.ndarray, i: np.ndarray, sinal: int = 1, margem: float = 0.05):
+    """Pico de verdade (máximo local com maior proeminência), longe das pontas da varredura.
+
+    Nas pontas a corrente sobe ou desce por causa da carga da dupla camada e da troca de sentido,
+    e o máximo absoluto cai ali; por isso procura máximos locais no miolo (90%) da faixa.
+    Devolve (índice, proeminência) ou None."""
+    from scipy.signal import find_peaks
+    if len(e) < 7:
+        return None
+    lo, hi = np.nanmin(e), np.nanmax(e)
+    miolo = (e >= lo + margem * (hi - lo)) & (e <= hi - margem * (hi - lo))
+    y = sinal * i
+    amplitude = float(np.nanmax(y) - np.nanmin(y)) or 1.0
+    idx, prop = find_peaks(y, prominence=0.02 * amplitude)
+    ok = miolo[idx]
+    if ok.any():
+        k = int(np.argmax(np.where(ok, prop["prominences"], -np.inf)))
+        return int(idx[k]), float(prop["prominences"][k])
+    cand = np.where(miolo, y, -np.inf)            # sem máximo local: o maior valor do miolo
+    return (int(np.argmax(cand)), 0.0) if np.isfinite(cand).any() else None
+
+
+
 def descritores(x: np.ndarray, y: np.ndarray, prefixo: str) -> dict:
     ok = ~np.isnan(y)
     x, y = x[ok], y[ok]
     if len(y) < 3:
         return {}
-    k = int(np.argmax(y))
+    achado = achar_pico(x, y)            # pico real (máximo local), não a subida nas pontas da varredura
+    k = achado[0] if achado is not None else int(np.argmax(y))
     pico, base = y[k], np.median(y)
     meia = base + (pico - base) / 2
     acima = y >= meia

@@ -69,7 +69,10 @@ Não há cadastro aberto: o admin cria as contas (página **Usuários** ou `fiep
 - **Amostras**: busca e filtros; o resultado do plaqueamento e a carga são editáveis direto na tabela.
 - **Amostra**: voltamogramas por réplica (os três estágios sobrepostos), medições com o QC e o estágio
   editável, plaqueamento, histórico e o botão **Prever com o modelo**.
-- **Previsão**: classifica arquivos sem gravar nada (e converte `.nox` para Excel).
+- **Previsão**: classifica arquivos sem gravar nada (e converte `.nox` para Excel). Mostra a base de
+  cada previsão (todas as etapas ou só uma etapa, com a acurácia do modelo daquela etapa; abaixo de
+  0,7 o resultado é "Inconclusivo") e a tabela de **picos** de cada arquivo — DPV/SWV e CV, inclusive
+  arquivos que o modelo não usa — com média ± desvio por técnica e download em CSV.
 
 ## Segurança
 
