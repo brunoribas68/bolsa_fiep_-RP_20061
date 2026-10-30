@@ -22,6 +22,10 @@ interface Resposta { modelo: string; algoritmo: string; limiar: number; amostras
 
 function ChipBase({ base }: { base?: string | null }) {
   if (!base) return <>—</>;
+  if (base === "medição única") return (
+    <Tooltip title="O modelo em uso foi treinado com uma medição por eletrodo (sem comparar etapas): a previsão usa os picos e a curva desta medição.">
+      <Chip size="small" variant="outlined" label="medição única" />
+    </Tooltip>);
   const unica = base.startsWith("etapa única");
   return (
     <Tooltip title={unica

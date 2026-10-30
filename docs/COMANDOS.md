@@ -6,7 +6,7 @@ Gerado por `fiep docs` a partir da ajuda dos comandos — não edite à mão. Se
 |---|---|
 | [`fiep planilha`](#fiep-planilha) | gera amostras.csv (1 linha por amostra) e metadados_nox.csv já preenchidos |
 | [`fiep excel`](#fiep-excel) | converte .nox para Excel no formato do NOVA |
-| [`fiep db`](#fiep-db) | banco de dados: migrar, importar, resumo, sql, exportar, exemplo |
+| [`fiep db`](#fiep-db) | banco de dados: migrar, importar, resumo, sql, exportar, exemplo, zerar |
 | [`fiep experimento`](#fiep-experimento) | divide 50/25/25, compara representações x modelos e registra o melhor |
 | [`fiep prever`](#fiep-prever) | classifica dados novos com o modelo registrado (por amostra e por eletrodo) |
 | [`fiep modelos`](#fiep-modelos) | modelos treinados: listar, mostrar, ativar, catalogo |
@@ -50,9 +50,9 @@ opções:
 
 ```
 uso: fiep db [-h] [--db DB] [--entrada ENTRADA] [--empresa EMPRESA] [--conjunto {treino,validacao,teste}]
-               [--sem-excel] [--sem-exemplo] [--remover] [--formato {xlsx,csv}] [--saida SAIDA]
-               [--config CONFIG]
-               {migrar,importar,resumo,exportar,sql,exemplo} [consulta]
+               [--sem-excel] [--sem-exemplo] [--sem-usuarios] [--sim] [--remover] [--formato {xlsx,csv}]
+               [--saida SAIDA] [--config CONFIG]
+               {migrar,importar,resumo,exportar,sql,exemplo,zerar} [consulta]
 
 Ações:
   migrar    cria/atualiza o banco pelas migrations (com os dados de exemplo, salvo --sem-exemplo)
@@ -62,9 +62,11 @@ Ações:
   sql       consulta livre, ex.: fiep db sql "SELECT * FROM v_replicatas WHERE n_aprovadas < 3"
   exportar  tudo para Excel (uma aba por tabela) ou CSV
   exemplo   carrega o case de demonstração (--remover para apagar)
+  zerar     apaga todos os dados e recria o banco (guarda uma cópia em dados/backup/; mantém as
+            contas de usuário, salvo --sem-usuarios; pede confirmação, salvo --sim)
 
 argumentos:
-  {migrar,importar,resumo,exportar,sql,exemplo}
+  {migrar,importar,resumo,exportar,sql,exemplo,zerar}
                                   o que fazer
   consulta                        consulta SQL (ação sql)
 
@@ -77,7 +79,9 @@ opções:
   --conjunto {treino,validacao,teste}
                                   importar: grava tudo como deste conjunto (padrão: sorteio, ou o da subpasta)
   --sem-excel                     importar: não gerar a cópia em Excel (dados/excel/)
-  --sem-exemplo                   migrar: não carregar os dados de exemplo
+  --sem-exemplo                   migrar/zerar: não carregar os dados de exemplo
+  --sem-usuarios                  zerar: apagar também as contas de usuário
+  --sim                           zerar: não pedir confirmação (scripts)
   --remover                       exemplo: apagar os dados de exemplo
   --formato {xlsx,csv}            exportar: formato (padrão xlsx)
   --saida SAIDA                   exportar/sql: arquivo ou pasta de saída

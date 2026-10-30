@@ -84,3 +84,24 @@ def test_experimento_com_pasta_de_teste(pasta_case, tmp_path):
               variantes=["dif_resumo"])
     assert r["resumo"]["amostras_teste"] == 6 + 9          # 25% sorteado + pasta de teste
     assert "da pasta teste/" in r["resumo"]["teste"]
+
+
+def test_medicao_unica_treina_e_preve_com_uma_etapa(tmp_path):
+    """Dados com uma medição só por eletrodo (ex.: só o eletrodo tratado): o modelo principal é de etapa única."""
+    sinal, meta, plaq = gerar_case(n_amostras=40, seed=4)
+    um = meta[meta["sensor_state"] == "capture_probe_16S_rRNA"]
+    d = tmp_path / "unica"
+    d.mkdir()
+    sinal[sinal["measurement_id"].isin(um["measurement_id"])].to_csv(d / "s.csv", index=False)
+    um.to_csv(d / "m.csv", index=False)
+    r = rodar(ingerir(d), load_config(), saida=tmp_path / "r", pasta_modelos=tmp_path / "m", rapido=True)
+    assert r["resumo"]["medicao_unica"] and set(r["placar"]["variante"]) == {"estagio_final"}
+    pacote = carregar(tmp_path / "m")
+    nova = tmp_path / "nova"
+    nova.mkdir()
+    s2, m2, _ = gerar_case(n_amostras=3, seed=11)
+    m2 = m2[m2["sensor_state"] == "capture_probe_16S_rRNA"]
+    s2[s2["measurement_id"].isin(m2["measurement_id"])].to_csv(nova / "s.csv", index=False)
+    m2.drop(columns="contamination_status").to_csv(nova / "m.csv", index=False)
+    out = prever(nova, pacote)
+    assert len(out) == len(m2) and (out["status"] == "avaliada").all()

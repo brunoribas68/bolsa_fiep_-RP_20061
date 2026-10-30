@@ -298,6 +298,24 @@ def _usuario(a):
 
 def _db(a):
     from . import db
+    if a.acao == "zerar":
+        if not a.sim:
+            alvo = a.db or os.environ.get("FIEP_DB_URL") or "dados/fiep.db"
+            print(f"Isto apaga TODAS as coletas, amostras, medições, QC e previsões de {alvo}"
+                  + ("" if a.sem_usuarios else " (as contas de usuário ficam)") + ".")
+            if input("Digite ZERAR para confirmar: ").strip() != "ZERAR":
+                print("Nada foi apagado.")
+                return
+        r = db.zerar(a.db, manter_usuarios=not a.sem_usuarios, dados_exemplo=not a.sem_exemplo)
+        print("Banco zerado e recriado" + (" com os dados de exemplo." if r["dados_exemplo"] else " vazio."))
+        if r["backup"]:
+            print(f"Cópia do banco anterior: {r['backup']}")
+        print(f"Contas de usuário mantidas: {r['usuarios_mantidos']}"
+              + ("" if r["usuarios_mantidos"] else " (crie o admin: fiep usuario criar --papel admin ...)"))
+        alvo = a.db or os.environ.get("FIEP_DB_URL") or "dados/fiep.db"
+        print(f"Modelos em modelos/ não foram apagados. Para treinar de novo: fiep experimento --db {alvo}"
+              + (" --com-exemplo" if r["dados_exemplo"] else "") + "  (ou Modelos → Treinar modelos)")
+        return
     if a.acao == "migrar":
         con = db.conectar(a.db, dados_exemplo=not a.sem_exemplo)
         print("Banco atualizado (migrations aplicadas).")
@@ -430,7 +448,7 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--saida", help="pasta de saída (padrão: dados/excel/<lote>)")
     p.add_argument("--refazer", action="store_true", help="converte de novo mesmo se o Excel já existir")
 
-    p = cmd("db", "banco de dados: migrar, importar, resumo, sql, exportar, exemplo", _db,
+    p = cmd("db", "banco de dados: migrar, importar, resumo, sql, exportar, exemplo, zerar", _db,
             "Ações:\n"
             "  migrar    cria/atualiza o banco pelas migrations (com os dados de exemplo, salvo --sem-exemplo)\n"
             "  importar  lê --entrada (.nox, Excel/CSV do NOVA, planilhas), roda o QC e grava; com a pasta dados/,\n"
@@ -438,8 +456,11 @@ def construir_parser() -> argparse.ArgumentParser:
             "  resumo    contagens (amostras, medições, réplicas completas, QC...)\n"
             "  sql       consulta livre, ex.: fiep db sql \"SELECT * FROM v_replicatas WHERE n_aprovadas < 3\"\n"
             "  exportar  tudo para Excel (uma aba por tabela) ou CSV\n"
-            "  exemplo   carrega o case de demonstração (--remover para apagar)")
-    p.add_argument("acao", choices=["migrar", "importar", "resumo", "exportar", "sql", "exemplo"], help="o que fazer")
+            "  exemplo   carrega o case de demonstração (--remover para apagar)\n"
+            "  zerar     apaga todos os dados e recria o banco (guarda uma cópia em dados/backup/; mantém as\n"
+            "            contas de usuário, salvo --sem-usuarios; pede confirmação, salvo --sim)")
+    p.add_argument("acao", choices=["migrar", "importar", "resumo", "exportar", "sql", "exemplo", "zerar"],
+                   help="o que fazer")
     p.add_argument("consulta", nargs="?", help="consulta SQL (ação sql)")
     p.add_argument("--db", help=DB_AJUDA)
     p.add_argument("--entrada", help="importar: pasta com os dados (ex.: dados)")
@@ -447,7 +468,9 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--conjunto", choices=["treino", "validacao", "teste"],
                    help="importar: grava tudo como deste conjunto (padrão: sorteio, ou o da subpasta)")
     p.add_argument("--sem-excel", action="store_true", help="importar: não gerar a cópia em Excel (dados/excel/)")
-    p.add_argument("--sem-exemplo", action="store_true", help="migrar: não carregar os dados de exemplo")
+    p.add_argument("--sem-exemplo", action="store_true", help="migrar/zerar: não carregar os dados de exemplo")
+    p.add_argument("--sem-usuarios", action="store_true", help="zerar: apagar também as contas de usuário")
+    p.add_argument("--sim", action="store_true", help="zerar: não pedir confirmação (scripts)")
     p.add_argument("--remover", action="store_true", help="exemplo: apagar os dados de exemplo")
     p.add_argument("--formato", choices=["xlsx", "csv"], default="xlsx", help="exportar: formato (padrão xlsx)")
     p.add_argument("--saida", help="exportar/sql: arquivo ou pasta de saída")

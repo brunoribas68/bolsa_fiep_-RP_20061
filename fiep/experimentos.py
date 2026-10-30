@@ -248,6 +248,19 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
     div = dados if isinstance(dados, Divisao) else montar(dados, {}, cfg)
     from .protocolos import ajustar
     cfg = ajustar(cfg, div.treino)           # etapas e técnica do protocolo dos dados (gravadas no modelo)
+    # medição única: os dados de treino só têm UMA etapa do protocolo (ex.: só o eletrodo tratado em
+    # ferri/ferrocianeto). Aí o modelo principal é de etapa única, com os picos e a curva dessa medição.
+    med_tr = div.treino.medicoes
+    if "tecnica" in med_tr and cfg["dados"].get("tecnica"):
+        med_tr = med_tr[med_tr["tecnica"].fillna(cfg["dados"]["tecnica"]) == cfg["dados"]["tecnica"]]
+    presentes = [e for e in cfg["dados"].get("estagios", []) if e in set(med_tr.get("sensor_state", []))]
+    etapa_unica = len(presentes) == 1
+    if etapa_unica:
+        cfg = copy.deepcopy(cfg)
+        cfg["dados"]["estagios"] = presentes
+        cfg.setdefault("features", {})["estagio_unico"] = presentes[0]
+        log.warning("Só a etapa %s nos dados de treino: modelo de medição única (representação estagio_final).",
+                    presentes[0])
     log.info("Protocolo: %s (%s; etapas %s)", cfg["dados"].get("protocolo"), cfg["dados"]["tecnica"],
              " -> ".join(cfg["dados"]["estagios"]))
     seed = cfg["modelo"]["seed"]
@@ -257,6 +270,8 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
     pasta.mkdir(parents=True, exist_ok=True)
 
     variantes = variantes or (["dif_resumo", "dif_curva"] if rapido else list(VARIANTES))
+    if etapa_unica:                          # sem segunda etapa não existe diferença entre etapas
+        variantes = ["estagio_final"]
     modelos = classificadores(seed, rapido=rapido and not algoritmos)
     if algoritmos:
         desconhecidos = [a for a in algoritmos if a not in modelos]
@@ -411,7 +426,7 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
 
     # ---------------- modelos de etapa única (previsão quando faltam etapas)
     avisar("modelos de etapa única", 0.9)
-    por_etapa = modelos_por_etapa(div, cfg, seed, n_folds) if cfg["dados"].get("estagios") else {}
+    por_etapa = modelos_por_etapa(div, cfg, seed, n_folds) if len(cfg["dados"].get("estagios") or []) > 1 else {}
 
     resumo = {
         "experimento": exp_id,
@@ -437,6 +452,7 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
         "algoritmos": list(modelos), "variantes": list(variantes),
         "protocolo": cfg["dados"].get("protocolo"), "tecnica": cfg["dados"].get("tecnica"),
         "estagios": cfg["dados"].get("estagios"),
+        "medicao_unica": etapa_unica,
         "por_etapa": resumo_por_etapa(por_etapa),
     }
 
@@ -458,7 +474,8 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
                     "metricas_teste": {k.replace("teste_", ""): melhor[k] for k in melhor.index
                                        if k.startswith("teste_")},
                     "formula": formula, "regressor": melhor_reg["modelo"] if regressor_final is not None else None,
-                    "por_etapa": resumo_por_etapa(por_etapa)},
+                    "por_etapa": resumo_por_etapa(por_etapa), "medicao_unica": etapa_unica,
+                    "estagios": cfg["dados"].get("estagios")},
             adicionais={"regressor": regressor_final, "por_etapa": por_etapa})
         resumo["modelo_registrado"] = cartao["id"]
 

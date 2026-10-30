@@ -99,6 +99,49 @@ def conectar(caminho: str | Path | None = None, dados_exemplo: bool | None = Non
     return fabrica_sessoes(caminho)()
 
 
+def zerar(caminho: str | Path | None = None, manter_usuarios: bool = True, dados_exemplo: bool = True) -> dict:
+    """Apaga TODOS os dados do banco e recria vazio pelas migrations (com o exemplo, salvo
+    `dados_exemplo=False`). As contas de usuário são mantidas, salvo `manter_usuarios=False`.
+
+    SQLite: antes guarda uma cópia do arquivo em dados/backup/. Postgres: apaga as tabelas.
+    Não mexe em modelos/ nem em resultados/ (treine de novo para trocar o modelo em uso)."""
+    import shutil
+    from sqlalchemy import text
+    from .orm import Base, Usuario, _engines, criar_engine, migrar, url_banco
+    url = url_banco(caminho)
+    usuarios_salvos: list[dict] = []
+    backup = None
+    eng = criar_engine(url)
+    from sqlalchemy import inspect
+    if "usuarios" in inspect(eng).get_table_names() and manter_usuarios:
+        with eng.connect() as c:
+            usuarios_salvos = [dict(r._mapping) for r in c.execute(Usuario.__table__.select())]
+    if url.startswith("sqlite:///"):
+        arquivo = Path(url[len("sqlite:///"):])
+        _engines.pop(url, eng).dispose()                 # solta o arquivo (Windows)
+        if arquivo.exists():
+            pasta = arquivo.parent / "backup"
+            pasta.mkdir(parents=True, exist_ok=True)
+            backup = pasta / f"{arquivo.stem}_{dt.datetime.now():%Y%m%d-%H%M%S}{arquivo.suffix}"
+            shutil.copy2(arquivo, backup)
+            for extra in ("", "-wal", "-shm"):
+                f = arquivo.with_name(arquivo.name + extra)
+                if f.exists():
+                    f.unlink()
+    else:
+        with eng.begin() as c:
+            for v in ("v_predicoes", "v_replicatas", "v_medicoes", "v_qc_atual"):
+                c.execute(text(f"DROP VIEW IF EXISTS {v} CASCADE"))
+            Base.metadata.drop_all(c)
+            c.execute(text("DROP TABLE IF EXISTS alembic_version"))
+    migrar(url, dados_exemplo=dados_exemplo)
+    if usuarios_salvos:
+        with criar_engine(url).begin() as c:
+            c.execute(Usuario.__table__.insert(), usuarios_salvos)
+    return {"backup": str(backup) if backup else None, "usuarios_mantidos": len(usuarios_salvos),
+            "dados_exemplo": dados_exemplo}
+
+
 def sql(s: Session, consulta: str, params: tuple | dict = ()) -> pd.DataFrame:
     """Consulta SQL livre (ex.: nas views). Parâmetros com `?` no SQLite."""
     res = s.connection().exec_driver_sql(consulta, params) if params else s.connection().exec_driver_sql(consulta)

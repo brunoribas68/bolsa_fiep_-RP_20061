@@ -77,7 +77,8 @@ def prever(entrada, pacote: dict, niveis: dict | None = None) -> pd.DataFrame:
                 "cobertura_grade": round(float(cob), 3),
                 "motivo": "" if cob >= 0.95 else "curva não cobre toda a faixa de potencial do treino",
                 "rotulo_informado": linha.get("contamination_status", np.nan),
-                "base": "etapas completas", "limiar": float(lim),
+                "base": "etapas completas" if cfg["features"]["modo"] == "diferenca_estagios" else "medição única",
+                "limiar": float(lim),
             })
     # aprovadas no QC mas sem previsão: replicata sem todos os estágios do sensor
     if cfg["features"]["modo"] == "diferenca_estagios":
@@ -193,11 +194,13 @@ def resumo_por_amostra(res: pd.DataFrame, limiar: float | None = None, cfg: dict
         av = g[g["status"] == "avaliada"]
         base = "etapas completas"
         if "base" in av and len(av):
-            completas = av[av["base"] == "etapas completas"]
+            completas = av[av["base"].isin(["etapas completas", "medição única"])]
             if len(completas):            # eletrodos com todas as etapas valem mais: usa só eles
                 av = completas
             else:
                 base = "etapa única"
+            if (av["base"] == "medição única").all():
+                base = "medição única"
         lim = float(av["limiar"].mean()) if "limiar" in av and av["limiar"].notna().any() else limiar
         p = float(av["prob_contaminada"].mean()) if len(av) else np.nan
         if len(av):
