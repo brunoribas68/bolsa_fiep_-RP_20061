@@ -127,7 +127,12 @@ def zerar(caminho: str | Path | None = None, manter_usuarios: bool = True, dados
             for extra in ("", "-wal", "-shm"):
                 f = arquivo.with_name(arquivo.name + extra)
                 if f.exists():
-                    f.unlink()
+                    try:
+                        f.unlink()
+                    except PermissionError as e:       # Windows: o arquivo está aberto (fiep servir rodando)
+                        raise RuntimeError(f"{arquivo} está em uso (o fiep servir está rodando?). Pare a plataforma "
+                                           "(Ctrl+C no terminal dela) e rode o fiep db zerar de novo. "
+                                           "Nada foi apagado.") from e
     else:
         with eng.begin() as c:
             for v in ("v_predicoes", "v_replicatas", "v_medicoes", "v_qc_atual"):
@@ -139,6 +144,7 @@ def zerar(caminho: str | Path | None = None, manter_usuarios: bool = True, dados
         with criar_engine(url).begin() as c:
             c.execute(Usuario.__table__.insert(), usuarios_salvos)
     return {"backup": str(backup) if backup else None, "usuarios_mantidos": len(usuarios_salvos),
+            "emails": [u["email"] for u in usuarios_salvos],
             "dados_exemplo": dados_exemplo}
 
 

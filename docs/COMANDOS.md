@@ -169,7 +169,7 @@ opções:
 ## fiep servir
 
 ```
-uso: fiep servir [-h] [--db DB] [--modelos MODELOS] [--host HOST] [--porta PORTA]
+uso: fiep servir [-h] [--db DB] [--modelos MODELOS] [--host HOST] [--porta PORTA] [--sem-compilar]
 
 Serve o frontend compilado (web/dist) e a API. Primeiro acesso: fiep usuario criar --papel admin. Variáveis de ambiente: ver docs/PLATAFORMA.md.
 
@@ -179,6 +179,7 @@ opções:
   --modelos MODELOS  pasta de modelos (padrão: modelos)
   --host HOST        endereço (0.0.0.0 para a rede local)
   --porta PORTA      porta (padrão: 8000)
+  --sem-compilar     não compilar a tela automaticamente quando ela estiver desatualizada
 ```
 
 ## fiep usuario
