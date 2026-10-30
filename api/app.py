@@ -100,7 +100,8 @@ def criar_app(cfg: Config | None = None) -> FastAPI:
             arq = (WEB / caminho).resolve()
             if caminho and arq.is_file() and str(arq).startswith(str(WEB)):
                 return FileResponse(arq)
-            return FileResponse(WEB / "index.html")
+            # sem cache: depois de recompilar a tela, o navegador pega a versão nova (os assets têm hash no nome)
+            return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-cache"})
     else:
         @app.get("/", include_in_schema=False)
         def sem_frontend():

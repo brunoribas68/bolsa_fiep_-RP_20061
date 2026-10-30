@@ -108,10 +108,21 @@ def _experimento(a):
     cols = ["posicao", "variante", "modelo", "cv_balanced_accuracy", "cv_ba_desvio", "val_balanced_accuracy",
             "val_roc_auc", "teste_balanced_accuracy", "teste_roc_auc"]
     print(f"\nTop 10 (ordenado por: {r['resumo']['criterio_escolha']}):")
-    print(r["placar"][[c for c in cols if c in r["placar"]]].head(10).round(3).to_string(index=False))
+    from .catalogo import nome_classificador, nome_regressor
+    from .experimentos import INFO_VARIANTES
+
+    def legivel(t, nome):
+        t = t.copy()
+        if "modelo" in t:
+            t["modelo"] = t["modelo"].map(nome)
+        if "variante" in t:
+            t["variante"] = t["variante"].map(lambda v: INFO_VARIANTES.get(v, {}).get("nome", v))
+        return t.rename(columns={"modelo": "algoritmo", "variante": "representação"})
+    print(legivel(r["placar"][[c for c in cols if c in r["placar"]]].head(10).round(3), nome_classificador)
+          .to_string(index=False))
     if len(r["regressao"]):
         print("\nRegressão da carga (log10 UFC/mL, contaminadas):")
-        print(r["regressao"].round(3).to_string(index=False))
+        print(legivel(r["regressao"].round(3), nome_regressor).to_string(index=False))
     res = r["resumo"]
     ta = res.get("teste_por_amostra")
     if ta:
@@ -139,6 +150,40 @@ def _tem_dados(pasta) -> bool:
     return p.exists() and any(x.suffix.lower() in {".nox", ".csv", ".xlsx"} for x in p.rglob("*"))
 
 
+def estado_frontend(raiz: Path) -> str:
+    """'ok', 'ausente' (nunca compilado) ou 'desatualizado' (código da tela mais novo que a compilação)."""
+    web = raiz / "web"
+    alvo = web / "dist" / "index.html"
+    if not alvo.exists():
+        return "ausente"
+    fontes = [p for p in (web / "src").rglob("*") if p.is_file()] + \
+             [web / n for n in ("index.html", "package.json", "vite.config.ts") if (web / n).exists()]
+    mais_novo = max((p.stat().st_mtime for p in fontes), default=0)
+    return "desatualizado" if mais_novo > alvo.stat().st_mtime + 1 else "ok"
+
+
+def compilar_frontend(raiz: Path) -> bool:
+    """npm install (se preciso) + npm run build. Devolve True se compilou."""
+    import shutil
+    import subprocess
+    npm = shutil.which("npm") or shutil.which("npm.cmd")
+    web = raiz / "web"
+    if not npm:
+        print("  npm não encontrado: instale o Node.js (https://nodejs.org) e rode: cd web; npm install; npm run build")
+        return False
+    passos = ([[npm, "install"]] if not (web / "node_modules").exists() else []) + [[npm, "run", "build"]]
+    for cmd_ in passos:
+        print("  $", " ".join(["npm", *cmd_[1:]]))
+        r = subprocess.run(cmd_, cwd=web, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if r.returncode != 0:
+            print((r.stdout + r.stderr)[-3000:])
+            print("  A compilação falhou: a plataforma vai abrir com a versão antiga da tela. "
+                  "Mande a mensagem acima para quem cuida do sistema.")
+            return False
+    print("  Tela compilada.")
+    return True
+
+
 def _servir(a):
     import os
     try:
@@ -152,8 +197,15 @@ def _servir(a):
     os.environ.setdefault("FIEP_MODELOS", str(Path(a.modelos).resolve()))
     if a.db:
         os.environ["FIEP_DB_URL"] = a.db
-    if not (raiz / "web" / "dist" / "index.html").exists():
-        print("Frontend ainda não compilado: cd web && npm install && npm run build (a API funciona em /docs).")
+    est = estado_frontend(raiz)
+    if est != "ok":
+        print("A tela (frontend) " + ("ainda não foi compilada." if est == "ausente"
+                                      else "está desatualizada: o código mudou depois da última compilação."))
+        if a.sem_compilar:
+            print("  --sem-compilar: rode cd web; npm install; npm run build")
+        else:
+            print("  Compilando agora (só desta vez; leva ~1 minuto)...")
+            compilar_frontend(raiz)
     print(f"Abra http://{a.host}:{a.porta} no navegador (Ctrl+C para parar)")
     uvicorn.run("api.app:app", host=a.host, port=a.porta, reload=False)
 
@@ -529,6 +581,8 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--modelos", default="modelos", help="pasta de modelos (padrão: modelos)")
     p.add_argument("--host", default="127.0.0.1", help="endereço (0.0.0.0 para a rede local)")
     p.add_argument("--porta", type=int, default=8000, help="porta (padrão: 8000)")
+    p.add_argument("--sem-compilar", action="store_true",
+                   help="não compilar a tela automaticamente quando ela estiver desatualizada")
 
     p = cmd("usuario", "contas da plataforma: criar, listar, senha, desativar", _usuario,
             "criar e senha pedem a senha no terminal (ou leem FIEP_SENHA_NOVA). Perfis: admin (tudo), "
@@ -647,8 +701,11 @@ def _verificar(a):
         linha("aviso", "modelo", f"nenhum em {a.modelos}/: rode fiep experimento")
     raiz = Path(__file__).resolve().parents[1]
     web = raiz / "web" / "dist" / "index.html"
-    linha("ok" if web.exists() else "aviso", "frontend", str(web.parent) if web.exists()
-          else "não compilado: cd web && npm install && npm run build")
+    est = estado_frontend(raiz)
+    linha("ok" if est == "ok" else "aviso", "frontend",
+          str(web.parent) if est == "ok" else
+          ("não compilado" if est == "ausente" else "DESATUALIZADO (a tela mostra a versão antiga)")
+          + ": cd web; npm install; npm run build — ou só fiep servir, que compila sozinho")
     print("\nTudo certo." if ok else "\nCorrija os itens com ERRO.")
     if not ok:
         raise SystemExit(1)

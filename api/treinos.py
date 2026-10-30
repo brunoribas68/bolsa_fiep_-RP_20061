@@ -80,13 +80,16 @@ class Treinos:
             finally:
                 s.close()
             d["divisao"] = div.descricao() + (f" {aviso}" if aviso else "")
+            from fiep.catalogo import nome_classificador
+            from fiep.experimentos import INFO_VARIANTES
             r = rodar(div, cfg, saida=self.resultados, pasta_modelos=self.modelos,
                       algoritmos=p.get("algoritmos") or None, variantes=p.get("variantes") or None,
                       ativar=bool(p.get("ativar")), progresso=progresso)
             res = r["resumo"]
             d.update(estado="concluido", progresso=1.0, etapa="concluído", modelo=res.get("modelo_registrado"),
                      experimento=res.get("experimento"),
-                     mensagem=f"Melhor: {res['melhor']['modelo']} [{res['melhor']['variante']}] — "
+                     mensagem=f"Melhor: {nome_classificador(res['melhor']['modelo'])} · "
+                              f"{INFO_VARIANTES.get(res['melhor']['variante'], {}).get('nome', res['melhor']['variante'])} — "
                               f"acurácia balanceada no teste {res['melhor'].get('teste_balanced_accuracy', float('nan')):.3f}")
         except Exception as e:  # noqa: BLE001
             log.warning("Treino %s falhou: %s", d["id"], traceback.format_exc())

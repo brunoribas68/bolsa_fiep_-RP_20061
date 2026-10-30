@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { Cabecalho, Kpi, Secao } from "../componentes/comum";
 import { data, num, pct } from "../formato";
 import { useCarregar } from "../usar";
+import { ComDica, dicaAlgoritmo, NomeVariante, separarModelo, useCatalogo } from "../componentes/nomes";
 
 interface PainelDados {
   amostras: number; contaminadas: number; nao_contaminadas: number; sem_rotulo: number; medicoes: number;
@@ -15,6 +16,22 @@ interface PainelDados {
 }
 
 const grade = (min: number) => ({ display: "grid", gap: 2, gridTemplateColumns: `repeat(auto-fit, minmax(min(${min}px, 100%), 1fr))` });
+
+function NomeModelo({ modelo }: { modelo: string }) {
+  const cat = useCatalogo();
+  const { alg, variante } = separarModelo(modelo);
+  const a = cat?.algoritmos.find(x => x.id === alg);
+  return (
+    <Box>
+      <ComDica dica={dicaAlgoritmo(alg, a)}>
+        <Typography fontWeight={600}>{a ? a.nome : alg}
+          {a && <Typography component="span" color="text.secondary" fontWeight={400}> · {a.ajuste}</Typography>}</Typography>
+      </ComDica>
+      {variante && <Stack direction="row" spacing={.75} alignItems="center">
+        <Typography variant="body2" color="text.secondary">com a representação</Typography><NomeVariante id={variante} cat={cat} /></Stack>}
+    </Box>
+  );
+}
 
 export default function Painel() {
   const { usuario, pode } = useAuth();
@@ -39,7 +56,7 @@ export default function Painel() {
             <Secao titulo="Modelo em uso" acoes={<Button size="small" component={Link} to="/modelos">detalhes e comparação</Button>}>
               {d.modelo ? (
                 <Stack spacing={1.5}>
-                  <Typography fontWeight={600}>{d.modelo.algoritmo}</Typography>
+                  <NomeModelo modelo={d.modelo.algoritmo} />
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     <Chip label={`Acurácia ${pct(d.modelo.acuracia_teste, 1)}`} color="primary" />
                     <Chip label={`Acurácia balanceada ${num(d.modelo.ab_teste, 3)}`} color="primary" variant="outlined" />

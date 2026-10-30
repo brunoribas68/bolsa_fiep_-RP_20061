@@ -302,7 +302,9 @@ def rodar(dados: Divisao | Dataset, cfg: dict, saida: str | Path = "resultados",
         tabelas[v] = (tab_tr, tab_va, tab_te, grade, feats, cfg_v, qc)
         for nome, est in modelos.items():
             feitas += 1
-            avisar(f"{v} · {nome}", feitas / max(total, 1) * 0.85)
+            from .catalogo import nome_classificador
+            avisar(f"{nome_classificador(nome)} · {INFO_VARIANTES.get(v, {}).get('nome', v)}",
+                   feitas / max(total, 1) * 0.85)
             try:
                 proba, lim, met, dp = _cv_classificacao(est, X, y, g, k, seed)
                 linha = {"variante": v, "modelo": nome, "n_treino": len(y), "n_features": len(feats),
