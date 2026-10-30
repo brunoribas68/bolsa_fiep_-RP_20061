@@ -310,8 +310,9 @@ def _db(a):
         print("Banco zerado e recriado" + (" com os dados de exemplo." if r["dados_exemplo"] else " vazio."))
         if r["backup"]:
             print(f"Cópia do banco anterior: {r['backup']}")
-        print(f"Contas de usuário mantidas: {r['usuarios_mantidos']}"
-              + ("" if r["usuarios_mantidos"] else " (crie o admin: fiep usuario criar --papel admin ...)"))
+        print(f"Contas de usuário mantidas, com as mesmas senhas: {r['usuarios_mantidos']}"
+              + (f" ({', '.join(r['emails'])})" if r["emails"] else " (crie o admin: fiep usuario criar --papel admin ...)"))
+        print("Se a plataforma estava aberta, reinicie o fiep servir. Esqueceu a senha: fiep usuario senha --email <e-mail>")
         alvo = a.db or os.environ.get("FIEP_DB_URL") or "dados/fiep.db"
         print(f"Modelos em modelos/ não foram apagados. Para treinar de novo: fiep experimento --db {alvo}"
               + (" --com-exemplo" if r["dados_exemplo"] else "") + "  (ou Modelos → Treinar modelos)")

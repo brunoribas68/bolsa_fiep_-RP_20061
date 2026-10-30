@@ -66,6 +66,7 @@ fiep verificar
 | `No module named 'fastapi'` / `jwt` | Faltou o extra da plataforma: `python -m pip install -e ".[api]"`. |
 | A página diz "Frontend não compilado" | `cd web`, `npm install`, `npm run build`. |
 | `table ... already exists` | Banco criado por uma versão antiga: atualize (`git pull`); o banco antigo é convertido sozinho e guardado como `dados/fiep.antigo-<data>.db`. |
+| Não consigo entrar (senha não aceita) | `fiep usuario listar` mostra se a conta existe; `fiep usuario senha --email voce@...` define uma senha nova; sem conta, `fiep usuario criar --email ... --papel admin`. Depois de 5 tentativas erradas o login fica bloqueado por 15 min (ou reinicie o `fiep servir`). O `fiep db zerar` mantém contas e senhas; pare a plataforma antes de zerar e reinicie depois. |
 | A tela não mostra o que mudou (ex.: nomes dos algoritmos ainda como `log_reg_C0.1`) | O frontend é compilado: depois do `git pull`, `cd web`, `npm install`, `npm run build`; reinicie o `fiep servir` e recarregue a página com Ctrl+F5. |
 | Depois do `git pull` algo quebrou | Reinstale (`python -m pip install -e ".[api,dev]"`) e recompile o frontend (`cd web && npm install && npm run build`). |
 
