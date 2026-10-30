@@ -95,9 +95,14 @@ export interface ModeloDetalhe extends ModeloResumo {
   figuras: { arquivo: string; titulo: string }[];
 }
 
+export interface InfoAlgoritmo {
+  id: string; nome: string; ajuste: string; familia?: string; o_que: string; parametros?: string; descricao: string;
+}
+export interface InfoVariante { id: string; nome: string; o_que: string; descricao: string }
 export interface Catalogo {
-  algoritmos: { id: string; familia: string; descricao: string }[];
-  variantes: { id: string; descricao: string }[];
+  algoritmos: (InfoAlgoritmo & { familia: string })[];
+  variantes: InfoVariante[];
+  regressores?: InfoAlgoritmo[];
 }
 
 export interface Treino {

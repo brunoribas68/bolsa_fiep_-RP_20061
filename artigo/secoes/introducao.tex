@@ -15,7 +15,14 @@ falhar fora do laboratório.
 
 Técnicas de aprendizado de máquina e quimiometria têm sido usadas para extrair mais informação de
 sinais eletroquímicos, de PCA e PLS a florestas aleatórias, máquinas de vetores de suporte e redes
-neurais \citep{puthongkham2021, bocan2025}. Duas dificuldades se repetem nesses trabalhos: os
+neurais \citep{puthongkham2021, bocan2025}. Na detecção de patógenos de alimentos, revisões recentes
+mostram a mesma tendência e apontam a validação em amostras reais e a transferência entre sensores
+como os principais gargalos \citep{banicod2025}. Dois trabalhos próximos ao deste ilustram o
+estado da arte: \citet{aliev2024} classificaram a concentração de \textit{Escherichia coli} a partir
+de voltamogramas cíclicos com um perceptron multicamadas (97\% de acurácia no teste), e
+\citet{tian2026} estimaram a carga de \textit{E. coli} O157:H7 em carne de frango a partir de
+espectros de impedância, comparando PLS, florestas aleatórias e \textit{gradient boosting} com
+validação que deixa concentrações inteiras de fora. Duas dificuldades se repetem nesses trabalhos: os
 conjuntos de dados são pequenos e heterogêneos, e a validação nem sempre impede que medições da
 mesma amostra apareçam no treino e no teste, o que infla os resultados \citep{kapoor2023}. Métodos
 que produzem descritores explícitos, como o SISSO \citep{ouyang2018}, são atraentes nesse cenário

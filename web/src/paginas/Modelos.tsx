@@ -13,14 +13,10 @@ import { useAuth } from "../auth";
 import { useAvisos } from "../componentes/avisos";
 import { Cabecalho, Kpi, mono, Secao } from "../componentes/comum";
 import Confirmar from "../componentes/Confirmar";
+import { ComDica, dicaAlgoritmo, NomeAlgoritmo, NomeVariante, separarModelo, textoModelo, useCatalogo } from "../componentes/nomes";
 import { data, num, pct } from "../formato";
 import type { Catalogo, Empresa, LinhaComparacao, ModeloDetalhe, ModeloResumo, Treino } from "../tipos";
 import { useCarregar } from "../usar";
-
-const NOME_VARIANTE: Record<string, string> = {
-  dif_resumo: "Descritores", dif_curva: "Curva de diferença", dif_curva_linha_base: "Diferença + linha de base",
-  dif_curva_sem_suavizar: "Diferença sem suavizar", estagio_final: "Só a etapa final",
-};
 
 function barra(v: number | null | undefined, melhor = false) {
   if (v === null || v === undefined) return <Typography variant="body2" color="text.secondary">—</Typography>;
@@ -38,7 +34,7 @@ function barra(v: number | null | undefined, melhor = false) {
 function NovoTreino({ aberto, aoFechar, aoIniciar }: { aberto: boolean; aoFechar: () => void; aoIniciar: (t: Treino) => void }) {
   const { pode } = useAuth();
   const avisar = useAvisos();
-  const { dados: cat } = useCarregar<Catalogo>(aberto ? "/api/catalogo" : null);
+  const cat = useCatalogo();
   const { dados: empresas } = useCarregar<Empresa[]>(aberto ? "/api/empresas" : null);
   const [algs, setAlgs] = useState<string[]>([]);
   const [vars, setVars] = useState<string[]>([]);
@@ -87,22 +83,20 @@ function NovoTreino({ aberto, aoFechar, aoIniciar }: { aberto: boolean; aoFechar
                     <Typography variant="overline" color="text.secondary">{fam}</Typography>
                     <FormGroup>
                       {lista.map(a => (
-                        <Tooltip key={a.id} title={a.descricao} placement="right" describeChild>
-                          <FormControlLabel control={<Checkbox size="small" checked={algs.includes(a.id)} onChange={() => alternar(algs, setAlgs, a.id)} />}
-                                            label={<Typography variant="body2" sx={mono}>{a.id}</Typography>} />
-                        </Tooltip>))}
+                        <FormControlLabel key={a.id} sx={{ alignItems: "flex-start", my: .25, "& .MuiCheckbox-root": { pt: .25 } }}
+                                          control={<Checkbox size="small" checked={algs.includes(a.id)} onChange={() => alternar(algs, setAlgs, a.id)} />}
+                                          label={<NomeAlgoritmo id={a.id} cat={cat} />} />))}
                     </FormGroup>
                   </CardContent></Card>))}
               </Box>
             </Box>
             <Box>
               <Typography variant="subtitle2">Representações da curva ({vars.length} de {cat.variantes.length})</Typography>
+              <Typography variant="caption" color="text.secondary">O que do voltamograma entra no modelo. Passe o mouse (ou toque) num nome para ver a explicação.</Typography>
               <FormGroup row>
                 {cat.variantes.map(v => (
-                  <Tooltip key={v.id} title={v.descricao} describeChild>
-                    <FormControlLabel control={<Checkbox size="small" checked={vars.includes(v.id)} onChange={() => alternar(vars, setVars, v.id)} />}
-                                      label={NOME_VARIANTE[v.id] || v.id} />
-                  </Tooltip>))}
+                  <FormControlLabel key={v.id} control={<Checkbox size="small" checked={vars.includes(v.id)} onChange={() => alternar(vars, setVars, v.id)} />}
+                                    label={<NomeVariante id={v.id} cat={cat} />} />))}
               </FormGroup>
             </Box>
             <Divider />
@@ -172,6 +166,7 @@ function ListaTreinos({ treinos }: { treinos: Treino[] }) {
 
 // ------------------------------------------------------------------ comparação
 function Comparacao({ linhas, escolhido }: { linhas: LinhaComparacao[]; escolhido: { variante: string | null; modelo: string | null } }) {
+  const cat = useCatalogo();
   const [ordem, setOrdem] = useState<keyof LinhaComparacao>("posicao");
   const ordenadas = [...linhas].sort((a, b) => ordem === "posicao" ? a.posicao - b.posicao
     : ((b[ordem] as number) ?? -1) - ((a[ordem] as number) ?? -1));
@@ -180,8 +175,7 @@ function Comparacao({ linhas, escolhido }: { linhas: LinhaComparacao[]; escolhid
     linhas.forEach(l => { const a = m.get(l.modelo); if (!a || (l.val_balanced_accuracy ?? 0) > (a.val_balanced_accuracy ?? 0)) m.set(l.modelo, l); });
     return [...m.values()].sort((a, b) => (b.val_balanced_accuracy ?? 0) - (a.val_balanced_accuracy ?? 0));
   }, [linhas]);
-  const eh = (l: LinhaComparacao) => escolhido.modelo?.startsWith(l.modelo + " [") && escolhido.variante === l.variante
-    || (l.modelo === escolhido.modelo && l.variante === escolhido.variante);
+  const eh = (l: LinhaComparacao) => separarModelo(escolhido.modelo).alg === l.modelo && escolhido.variante === l.variante;
   const cab = (k: keyof LinhaComparacao, t: string) => (
     <TableCell align="right" sx={{ cursor: "pointer", color: ordem === k ? "primary.main" : undefined }} onClick={() => setOrdem(k)}>{t}</TableCell>);
   return (
@@ -190,19 +184,20 @@ function Comparacao({ linhas, escolhido }: { linhas: LinhaComparacao[]; escolhid
         <Stack spacing={1}>
           {melhorPorAlg.map(l => (
             <Stack key={l.modelo} direction="row" spacing={2} alignItems="center">
-              <Typography variant="body2" sx={{ ...mono, width: 130, flexShrink: 0 }}>{l.modelo}</Typography>
+              <Box sx={{ width: { xs: 150, sm: 270 }, flexShrink: 0 }}><NomeAlgoritmo id={l.modelo} cat={cat} /></Box>
               <Box sx={{ flex: 1 }}>{barra(l.val_balanced_accuracy, eh(l))}</Box>
-              <Typography variant="caption" color="text.secondary" sx={{ width: 170, display: { xs: "none", sm: "block" } }}>{NOME_VARIANTE[l.variante] || l.variante}</Typography>
+              <Box sx={{ width: 230, display: { xs: "none", md: "block" }, color: "text.secondary" }}>
+                <NomeVariante id={l.variante} cat={cat} /></Box>
             </Stack>))}
         </Stack>
-        <Typography variant="caption" color="text.secondary">Acurácia balanceada; a barra vai de 0,5 (acaso) a 1.</Typography>
+        <Typography variant="caption" color="text.secondary">Acurácia balanceada na validação, com a melhor representação de cada algoritmo; a barra vai de 0,5 (acaso) a 1. Passe o mouse (ou toque) num nome para ver o que é.</Typography>
       </Secao>
       <Secao titulo={`Todas as combinações (${linhas.length})`}>
         <TableContainer sx={{ maxHeight: 520 }}>
           <Table size="small" stickyHeader>
             <TableHead><TableRow>
               <TableCell sx={{ cursor: "pointer" }} onClick={() => setOrdem("posicao")}>#</TableCell>
-              <TableCell>Algoritmo</TableCell><TableCell>Representação</TableCell>
+              <TableCell sx={{ minWidth: 220 }}>Algoritmo</TableCell><TableCell sx={{ minWidth: 180 }}>Representação da curva</TableCell>
               {cab("cv_balanced_accuracy", "CV treino")}{cab("val_balanced_accuracy", "Validação")}{cab("val_roc_auc", "AUC val.")}
               {cab("teste_balanced_accuracy", "Teste")}{cab("teste_sensibilidade", "Sens.")}{cab("teste_especificidade", "Espec.")}
               {cab("teste_roc_auc", "AUC teste")}
@@ -210,8 +205,13 @@ function Comparacao({ linhas, escolhido }: { linhas: LinhaComparacao[]; escolhid
             <TableBody>{ordenadas.map(l => (
               <TableRow key={`${l.variante}-${l.modelo}`} hover selected={eh(l)}>
                 <TableCell>{l.posicao}</TableCell>
-                <TableCell sx={mono}>{l.modelo}{eh(l) && <StarOutline fontSize="inherit" color="primary" sx={{ ml: .5, verticalAlign: "middle" }} />}</TableCell>
-                <TableCell>{NOME_VARIANTE[l.variante] || l.variante}</TableCell>
+                <TableCell>
+                  <Stack direction="row" spacing={.5} alignItems="flex-start">
+                    <NomeAlgoritmo id={l.modelo} cat={cat} />
+                    {eh(l) && <Tooltip title="Combinação escolhida (melhor na validação)"><StarOutline fontSize="small" color="primary" /></Tooltip>}
+                  </Stack>
+                </TableCell>
+                <TableCell><NomeVariante id={l.variante} cat={cat} /></TableCell>
                 <TableCell align="right">{num(l.cv_balanced_accuracy, 3)}{l.cv_ba_desvio !== null && <Typography component="span" variant="caption" color="text.secondary"> ±{num(l.cv_ba_desvio, 2)}</Typography>}</TableCell>
                 <TableCell align="right" sx={{ fontWeight: 600 }}>{num(l.val_balanced_accuracy, 3)}</TableCell>
                 <TableCell align="right">{num(l.val_roc_auc, 3)}</TableCell>
@@ -225,10 +225,30 @@ function Comparacao({ linhas, escolhido }: { linhas: LinhaComparacao[]; escolhid
         </TableContainer>
         <Typography variant="caption" color="text.secondary">
           Valores de acurácia balanceada. A escolha é pela validação (★); o teste mostra como cada combinação se sairia, mas não participa da escolha.
-          Clique nos títulos para ordenar.
+          Clique nos títulos para ordenar. Os nomes têm a explicação de cada algoritmo e representação: passe o mouse (ou toque) neles.
         </Typography>
       </Secao>
     </Stack>
+  );
+}
+
+// ------------------------------------------------------------------ título do modelo
+function NomeModeloTitulo({ modelo }: { modelo: string | null }) {
+  const cat = useCatalogo();
+  const { alg, variante } = separarModelo(modelo);
+  const a = cat?.algoritmos.find(x => x.id === alg);
+  return (
+    <Box>
+      <ComDica dica={dicaAlgoritmo(alg, a)}>
+        <Typography variant="h6" component="h2" sx={{ lineHeight: 1.25 }}>
+          {a ? a.nome : alg} {a && <Box component="span" sx={{ fontWeight: 400, color: "text.secondary", fontSize: ".9em" }}>· {a.ajuste}</Box>}
+        </Typography>
+      </ComDica>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: .25 }} flexWrap="wrap" useFlexGap>
+        <Typography variant="body2" color="text.secondary">com a representação</Typography>
+        <NomeVariante id={variante} cat={cat} />
+      </Stack>
+    </Box>
   );
 }
 
@@ -246,6 +266,7 @@ export default function Modelos() {
   const [aba, setAba] = useState("comparacao");
   const [novo, setNovo] = useState(false);
   const [ativar, setAtivar] = useState<string | null>(null);
+  const cat = useCatalogo();
 
   const rodando = treinos.dados?.some(t => t.estado === "rodando" || t.estado === "na fila");
   useEffect(() => {                                 // acompanha o treino em andamento
@@ -286,7 +307,7 @@ export default function Modelos() {
               <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={2}>
                 <Box>
                   <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                    <Typography variant="h6">{m.modelo}</Typography>
+                    <NomeModeloTitulo modelo={m.modelo} />
                     {m.em_uso ? <Chip size="small" color="primary" icon={<CheckCircleOutline />} label="em uso" />
                       : <Chip size="small" variant="outlined" label="não está em uso" />}
                     {m.protocolo && <Chip size="small" variant="outlined" label={`protocolo ${m.protocolo}`} />}
@@ -308,7 +329,7 @@ export default function Modelos() {
               </Box>
               <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5 }}>
                 Medido no conjunto de teste, que não participou de nenhuma escolha. Validação {num(m.validacao_balanced_accuracy, 3)} ·
-                validação cruzada no treino {num(m.cv_balanced_accuracy, 3)}{m.regressor && ` · carga estimada por ${m.regressor}`}.
+                validação cruzada no treino {num(m.cv_balanced_accuracy, 3)}{m.regressor && ` · carga estimada por ${cat?.regressores?.find(r => r.id === m.regressor)?.nome || m.regressor}`}.
               </Typography>
             </CardContent>
           </Card>
@@ -343,12 +364,12 @@ export default function Modelos() {
             <Secao titulo="Estimativa da carga (log₁₀ UFC/mL) nas contaminadas">
               {m.regressao.length ? (
                 <TableContainer><Table size="small">
-                  <TableHead><TableRow><TableCell>Regressor</TableCell><TableCell>Representação</TableCell>
+                  <TableHead><TableRow><TableCell>Regressor</TableCell><TableCell>Representação da curva</TableCell>
                     <TableCell align="right">RMSE CV</TableCell><TableCell align="right">RMSE validação</TableCell>
                     <TableCell align="right">RMSE teste</TableCell><TableCell align="right">R² teste</TableCell></TableRow></TableHead>
                   <TableBody>{m.regressao.map((r, i) => (
                     <TableRow key={i} hover selected={r.modelo === m.regressor && r.variante === m.variante}>
-                      <TableCell sx={mono}>{r.modelo}</TableCell><TableCell>{NOME_VARIANTE[r.variante] || r.variante}</TableCell>
+                      <TableCell><NomeAlgoritmo id={r.modelo} cat={cat} /></TableCell><TableCell><NomeVariante id={r.variante} cat={cat} /></TableCell>
                       <TableCell align="right">{num(r.cv_rmse, 2)}</TableCell><TableCell align="right">{num(r.val_rmse, 2)}</TableCell>
                       <TableCell align="right">{num(r.teste_rmse, 2)}</TableCell><TableCell align="right">{num(r.teste_r2, 2)}</TableCell>
                     </TableRow>))}</TableBody>
@@ -367,7 +388,7 @@ export default function Modelos() {
                 <TableBody>{lista.dados?.map(x => (
                   <TableRow key={x.id} hover selected={x.id === m.id}>
                     <TableCell>
-                      <MuiLink component={Link} to={`/modelos/${x.id}`} fontWeight={550}>{x.modelo}</MuiLink>
+                      <MuiLink component={Link} to={`/modelos/${x.id}`} fontWeight={550}>{textoModelo(x.modelo, cat)}</MuiLink>
                       {x.em_uso && <Chip size="small" color="primary" label="em uso" sx={{ ml: 1 }} />}
                       <Typography variant="caption" display="block" color="text.secondary" sx={mono}>{x.id}</Typography>
                     </TableCell>

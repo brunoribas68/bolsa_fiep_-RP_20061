@@ -80,10 +80,12 @@ No Excel, a técnica vem do nome/procedimento ou das colunas (forward/backward =
    grade de potencial é definida só no treino.
 2. **Variantes** de representação: `dif_resumo`, `dif_curva`, `dif_curva_linha_base`,
    `dif_curva_sem_suavizar`, `estagio_final`.
-3. **Algoritmos** (`fiep/catalogo.py`, 14): regressão logística (L2 em 3 intensidades, L1), LDA, SVM
+3. **Algoritmos** (`fiep/catalogo.py`, 15): regressão logística (L2 em 3 intensidades, L1), LDA, SVM
    RBF (2 valores de C), kNN, floresta aleatória, extra trees, gradient boosting, rede neural MLP
-   (64-32, parada antecipada), naive Bayes gaussiano e SISSO simplificado. `--algoritmos` e
+   (64-32, parada antecipada), rede de Aliev et al. 2024 (`mlp_aliev2024`, 250-250-250, MinMax), naive Bayes gaussiano e SISSO simplificado. `--algoritmos` e
    `--variantes` (ou a tela Modelos) restringem a comparação; `fiep modelos catalogo` lista os nomes.
+   Nomes legíveis e explicações: `INFO_CLASSIFICADORES` / `INFO_REGRESSORES` em `fiep/catalogo.py` e
+   `INFO_VARIANTES` em `fiep/experimentos.py` (fonte única para a plataforma, o `fiep modelos` e o artigo).
 4. **Treino**: cada combinação é ajustada no treino; a validação cruzada agrupada por amostra
    (StratifiedGroupKFold) dá a média ± desvio e o limiar (J de Youden nas previsões fora da dobra).
 5. **Escolha na validação**: maior acurácia balanceada no conjunto de validação (desempate: AUC na

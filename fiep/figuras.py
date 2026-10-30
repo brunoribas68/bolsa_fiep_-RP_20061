@@ -11,6 +11,31 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+
+def _nm(alg: str, completo: bool = True) -> str:
+    """Nome legível do classificador (ou regressor), para figuras e tabelas."""
+    from .catalogo import INFO_CLASSIFICADORES, INFO_REGRESSORES
+    i = INFO_CLASSIFICADORES.get(alg) or INFO_REGRESSORES.get(alg)
+    if not i:
+        return str(alg)
+    return f"{i['nome']} — {i['ajuste']}" if completo else i["nome"]
+
+
+def _nv(var: str) -> str:
+    from .experimentos import INFO_VARIANTES
+    return INFO_VARIANTES.get(var, {}).get("nome", str(var))
+
+
+def _cel_tex(nome: str, detalhe: str = "") -> str:
+    """Célula de tabela LaTeX com o nome e, embaixo, o detalhe em letra menor."""
+    return _tex_escape(nome) + (r"\newline{\scriptsize " + _tex_escape(detalhe) + "}" if detalhe else "")
+
+
+def _ajuste(alg: str) -> str:
+    from .catalogo import INFO_CLASSIFICADORES, INFO_REGRESSORES
+    i = INFO_CLASSIFICADORES.get(alg) or INFO_REGRESSORES.get(alg)
+    return i["ajuste"] if i else ""
+
 TINTA = "#0b0b0b"
 TINTA_2 = "#52514e"
 GRADE = "#e4e3df"
@@ -51,12 +76,15 @@ def mapa_modelos(placar: pd.DataFrame, destino: Path):
         else "cv_balanced_accuracy"
     tab = placar.pivot_table(index="modelo", columns="variante", values=col)
     tab = tab.loc[tab.max(axis=1).sort_values(ascending=False).index]
+    tab.index = [_nm(i) for i in tab.index]
+    import textwrap
+    tab.columns = ["\n".join(textwrap.wrap(_nv(c), 18)) for c in tab.columns]
     cmap = LinearSegmentedColormap.from_list("azul", ["#eef4fc", "#2a78d6", "#0d3c75"])
-    fig, ax = plt.subplots(figsize=(1.3 + 1.15 * tab.shape[1], 0.9 + 0.32 * tab.shape[0]))
+    fig, ax = plt.subplots(figsize=(3.6 + 1.25 * tab.shape[1], 1.1 + 0.34 * tab.shape[0]))
     ax.grid(False)
     vmin = np.nanmin(tab.values)
     im = ax.imshow(tab.values, cmap=cmap, vmin=max(0.5, vmin - 0.02), vmax=1.0, aspect="auto")
-    ax.set_xticks(range(tab.shape[1]), tab.columns, rotation=30, ha="right")
+    ax.set_xticks(range(tab.shape[1]), tab.columns, rotation=0, ha="center", fontsize=7.5)
     ax.set_yticks(range(tab.shape[0]), tab.index)
     melhor = np.unravel_index(np.nanargmax(tab.values), tab.shape)
     for i in range(tab.shape[0]):
@@ -86,7 +114,7 @@ def roc_teste(prob_teste: dict, escolhidos: list, destino: Path):
         if len(set(y)) < 2:
             continue
         fpr, tpr, _ = roc_curve(y, p)
-        ax.plot(fpr, tpr, color=cor, label=f"{chave[1]} [{chave[0]}]  AUC {_br(roc_auc_score(y, p))}")
+        ax.plot(fpr, tpr, color=cor, label=f"{_nm(chave[1], completo=False)} · {_nv(chave[0])}\nAUC {_br(roc_auc_score(y, p))}")
     ax.set_xlabel("1 − especificidade")
     ax.set_ylabel("sensibilidade")
     ax.set_title("Curva ROC no conjunto de teste")
@@ -199,29 +227,29 @@ def tabela_classificacao(placar: pd.DataFrame, destino: Path, n=10):
     linhas = []
     for _, r in placar.head(n).iterrows():
         linhas.append(" & ".join([
-            str(int(r["posicao"])), _tex_escape(r["variante"]), _tex_escape(r["modelo"]),
+            str(int(r["posicao"])), _cel_tex(_nv(r["variante"])), _cel_tex(_nm(r["modelo"], False), _ajuste(r["modelo"])),
             f"{_br(r['cv_balanced_accuracy'])} $\\pm$ {_br(r['cv_ba_desvio'])}",
             _br(r.get("val_balanced_accuracy")), _br(r.get("val_roc_auc")),
             _br(r.get("teste_balanced_accuracy")), _br(r.get("teste_sensibilidade")),
             _br(r.get("teste_especificidade")), _br(r.get("teste_roc_auc"))]) + r" \\")
     destino.write_text("\n".join([
-        r"\begin{tabular}{rllccccccc}", r"\toprule",
+        r"\begin{tabular}{r>{\raggedright\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{3.3cm}ccccccc}", r"\toprule",
         r" & & & CV (treino) & \multicolumn{2}{c}{Validação} & \multicolumn{4}{c}{Teste} \\",
         r"\cmidrule(lr){4-4}\cmidrule(lr){5-6}\cmidrule(lr){7-10}",
-        r"\# & Variante & Modelo & AB & AB & AUC & AB & Sens. & Espec. & AUC \\", r"\midrule",
+        r"\# & Representação & Algoritmo & AB & AB & AUC & AB & Sens. & Espec. & AUC \\", r"\midrule",
         *linhas, r"\bottomrule", r"\end{tabular}", ""]), encoding="utf-8")
 
 
 def tabela_regressao(reg: pd.DataFrame, destino: Path):
-    linhas = [" & ".join([_tex_escape(r["variante"]), _tex_escape(r["modelo"]), _br(r["cv_rmse"], 2),
+    linhas = [" & ".join([_cel_tex(_nv(r["variante"])), _cel_tex(_nm(r["modelo"], False), _ajuste(r["modelo"])), _br(r["cv_rmse"], 2),
                           _br(r.get("val_rmse"), 2), _br(r.get("val_r2"), 2),
                           _br(r.get("teste_rmse"), 2), _br(r.get("teste_r2"), 2)]) + r" \\"
               for _, r in reg.iterrows()]
     destino.write_text("\n".join([
-        r"\begin{tabular}{llccccc}", r"\toprule",
+        r"\begin{tabular}{>{\raggedright\arraybackslash}p{3cm}>{\raggedright\arraybackslash}p{3.6cm}ccccc}", r"\toprule",
         r" & & CV (treino) & \multicolumn{2}{c}{Validação} & \multicolumn{2}{c}{Teste} \\",
         r"\cmidrule(lr){3-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}",
-        r"Variante & Modelo & RMSE & RMSE & $R^2$ & RMSE & $R^2$ \\", r"\midrule",
+        r"Representação & Algoritmo & RMSE & RMSE & $R^2$ & RMSE & $R^2$ \\", r"\midrule",
         *linhas, r"\bottomrule", r"\end{tabular}", ""]), encoding="utf-8")
 
 
@@ -243,7 +271,8 @@ def numeros(resumo: dict, melhor: pd.Series, reg: pd.DataFrame, destino: Path):
         m("PropTeste", round(resumo.get("proporcoes", {}).get("teste", 0) * 100)),
         m("CriterioEscolha", _tex_escape(resumo.get("criterio_escolha", "validação cruzada no treino"))),
         m("NCombinacoes", resumo["combinacoes_avaliadas"]),
-        m("MelhorModelo", _tex_escape(melhor["modelo"])), m("MelhorVariante", _tex_escape(melhor["variante"])),
+        m("MelhorModelo", _tex_escape(f"{_nm(melhor['modelo'], False)} ({_ajuste(melhor['modelo'])})")),
+        m("MelhorVariante", _tex_escape(_nv(melhor["variante"]).lower())),
         m("ABcv", _br(melhor["cv_balanced_accuracy"])), m("ABcvDP", _br(melhor["cv_ba_desvio"])),
         m("AUCcv", _br(melhor["cv_roc_auc"])),
         m("ABval", _br(melhor.get("val_balanced_accuracy"))), m("AUCval", _br(melhor.get("val_roc_auc"))),
@@ -255,7 +284,7 @@ def numeros(resumo: dict, melhor: pd.Series, reg: pd.DataFrame, destino: Path):
         m("ABtesteAmostra", _br((resumo.get("teste_por_amostra") or {}).get("balanced_accuracy"))),
         m("NAmostrasTesteAval", (resumo.get("teste_por_amostra") or {}).get("n_amostras", 0)),
         m("ACniveis", _br((resumo.get("teste_niveis") or {}).get("acuracia"))),
-        m("RegModelo", _tex_escape(r0["modelo"]) if r0 is not None else "--"),
+        m("RegModelo", _tex_escape(_nm(r0["modelo"], False)) if r0 is not None else "--"),
         m("RegRMSEcv", _br(r0["cv_rmse"], 2) if r0 is not None else "--"),
         m("RegRMSEval", _br(r0.get("val_rmse"), 2) if r0 is not None else "--"),
         m("RegRMSEteste", _br(r0.get("teste_rmse"), 2) if r0 is not None else "--"),
@@ -290,7 +319,7 @@ def gerar_todas(pasta: Path, placar, prob_teste, melhor_chave, tabelas, reg, reg
     roc_teste(prob_teste, [melhor_chave, *outros], fig / "roc_teste.png")
     if "teste_vp" in melhor and pd.notna(melhor.get("teste_vp")):
         matriz_confusao(melhor["teste_vp"], melhor["teste_fp"], melhor["teste_vn"], melhor["teste_fn"],
-                        fig / "matriz_confusao_teste.png", f"{melhor['modelo']} — teste")
+                        fig / "matriz_confusao_teste.png", f"{_nm(melhor['modelo'], completo=False)} — teste")
     v_curva = melhor_chave[0] if any(str(c).startswith("D_") for c in tabelas[melhor_chave[0]][0].columns) \
         else next((v for v in tabelas if any(str(c).startswith("D_") for c in tabelas[v][0].columns)), None)
     if v_curva:
@@ -305,7 +334,7 @@ def gerar_todas(pasta: Path, placar, prob_teste, melhor_chave, tabelas, reg, reg
         r0 = reg.iloc[0]
         chave = (r0["variante"], r0["modelo"])
         if chave in reg_pred:
-            regressao(*reg_pred[chave], fig / "regressao_teste.png", f"Carga bacteriana — {r0['modelo']} (teste)")
+            regressao(*reg_pred[chave], fig / "regressao_teste.png", f"Carga bacteriana — {_nm(r0['modelo'], completo=False)} (teste)")
         tabela_regressao(reg, tex / "tabela_regressao.tex")
     tabela_classificacao(placar, tex / "tabela_classificacao.tex")
     numeros(resumo, melhor, reg, tex / "numeros.tex")

@@ -94,7 +94,7 @@ uso: fiep experimento [-h] [--dados DADOS] [--db DB] [--filtro FILTRO] [--filtro
                         [--variantes VARIANTES] [--nao-ativar] [--artigo] [--artigo-pasta ARTIGO_PASTA]
                         [--config CONFIG]
 
-Divide as amostras em treino/validação/teste (padrão 50/25/25, por amostra, estratificado), ajusta 5 representações x 12 modelos no treino, escolhe pela validação, re-treina com treino+validação e mede uma vez no teste. Registra o melhor em modelos/ (usado pela plataforma) e gera figuras/tabelas.
+Divide as amostras em treino/validação/teste (padrão 50/25/25, por amostra, estratificado), ajusta 5 representações x 15 algoritmos no treino (lista: fiep modelos catalogo), escolhe pela validação, re-treina com treino+validação e mede uma vez no teste. Registra o melhor em modelos/ (usado pela plataforma) e gera figuras/tabelas.
 
 opções:
   -h, --help                      mostra esta ajuda

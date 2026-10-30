@@ -13,7 +13,14 @@ diferente do aplicado produziam curvas sem significado eletroquímico. Sem esse 
 medições entrariam no treino como se fossem amostras. \preencher{quantificar com os dados reais}
 
 A divisão por amostra em treino, validação e teste evita o vazamento de informação entre os
-conjuntos, problema frequente em aplicações de aprendizado de máquina \citep{kapoor2023}. Como
+conjuntos, problema frequente em aplicações de aprendizado de máquina \citep{kapoor2023}. Por
+isso as acurácias aqui não são diretamente comparáveis às de trabalhos que separam medições, e não
+amostras: em \citet{aliev2024}, por exemplo, cada amostra gerou vários voltamogramas e o teste
+tinha três amostras por classe. Testamos também a arquitetura daquele trabalho (três camadas
+ocultas de 250 neurônios), já que a rede treinada não foi publicada; com o número de amostras
+disponível, ela não superou modelos lineares regularizados. Na mesma linha, \citet{tian2026}
+observaram que um modelo linear de poucas variáveis latentes (PLS) generalizou melhor que modelos
+mais flexíveis quando concentrações inteiras ficavam fora do treino. Como
 dezenas de combinações foram comparadas, a acurácia da melhor combinação na validação tende a ser
 otimista; o valor de referência é o do conjunto de teste, que não participou de nenhuma escolha.
 Com poucas amostras, a estimativa de um único conjunto de teste tem variância alta

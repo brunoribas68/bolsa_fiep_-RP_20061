@@ -185,20 +185,38 @@ def _planilha(a):
     print("Depois:\n  fiep db importar --entrada dados\n  fiep experimento --artigo")
 
 
+def _nome_modelo(s) -> str:
+    """'log_reg_C0.1 [dif_curva]' -> 'Regressão logística — regularização forte, C = 0,1 · Curva de diferença entre etapas'."""
+    import re
+    from .catalogo import nome_classificador
+    from .experimentos import INFO_VARIANTES
+    m = re.match(r"^(.*?)\s*\[(.+)\]\s*$", str(s or ""))
+    if not m:
+        return nome_classificador(str(s)) if s else ""
+    return f"{nome_classificador(m.group(1))} · {INFO_VARIANTES.get(m.group(2), {}).get('nome', m.group(2))}"
+
+
 def _modelos(a):
     from . import registro
     if a.acao == "catalogo":
-        from .catalogo import DESCRICAO_CLASSIFICADORES, DESCRICAO_REGRESSORES
-        from .experimentos import DESCRICAO_VARIANTES
-        print("Classificadores (--algoritmos):")
-        for k, (fam, txt) in DESCRICAO_CLASSIFICADORES.items():
-            print(f"  {k:15s} {fam:15s} {txt}")
-        print("\nRepresentações (--variantes):")
-        for k, txt in DESCRICAO_VARIANTES.items():
-            print(f"  {k:24s} {txt}")
+        import textwrap
+        from .catalogo import INFO_CLASSIFICADORES, INFO_REGRESSORES
+        from .experimentos import INFO_VARIANTES
+
+        def bloco(cod, titulo, *textos):
+            print(f"\n  {cod}\n    {titulo}")
+            for t in textos:
+                if t:
+                    print(textwrap.fill(t, 100, initial_indent="      ", subsequent_indent="      "))
+        print("Classificadores (nomes para --algoritmos):")
+        for k, v in INFO_CLASSIFICADORES.items():
+            bloco(k, f"{v['nome']} — {v['ajuste']} [{v['familia']}]", v["o_que"], v.get("parametros"))
+        print("\nRepresentações da curva (nomes para --variantes):")
+        for k, v in INFO_VARIANTES.items():
+            bloco(k, v["nome"], v["o_que"])
         print("\nRegressores da carga (todos são comparados):")
-        for k, txt in DESCRICAO_REGRESSORES.items():
-            print(f"  {k:15s} {txt}")
+        for k, v in INFO_REGRESSORES.items():
+            bloco(k, f"{v['nome']} — {v['ajuste']}", v["o_que"])
         return
     if a.acao == "listar":
         lista = registro.listar(a.modelos)
@@ -209,6 +227,7 @@ def _modelos(a):
         df = pd.DataFrame(lista)[["em_uso", "id", "modelo", "protocolo", "teste_acuracia", "teste_balanced_accuracy",
                                   "teste_roc_auc", "teste_amostra_balanced_accuracy", "n_amostras"]]
         df["em_uso"] = df["em_uso"].map({True: "*", False: ""})
+        df["modelo"] = df["modelo"].map(_nome_modelo)
         print(df.round(3).to_string(index=False))
         print("\n* = em uso. Detalhes: fiep modelos mostrar --id <id> · trocar: fiep modelos ativar --id <id>")
         return
@@ -223,12 +242,22 @@ def _modelos(a):
                   "teste_sensibilidade", "teste_especificidade", "teste_roc_auc", "teste_amostra_balanced_accuracy",
                   "validacao_balanced_accuracy", "cv_balanced_accuracy", "regressor"):
             v = d.get(k)
+            if k == "modelo":
+                v = f"{_nome_modelo(v)}   ({v})"
+            elif k == "regressor" and v:
+                from .catalogo import nome_regressor
+                v = f"{nome_regressor(v)}   ({v})"
             print(f"{k:32s} {round(v, 3) if isinstance(v, float) else v}")
         if d["comparacao"]:
             import pandas as pd
             cols = ["variante", "modelo", "val_balanced_accuracy", "teste_balanced_accuracy", "teste_roc_auc"]
             print("\nComparação (10 primeiras):")
-            print(pd.DataFrame(d["comparacao"])[cols].head(10).round(3).to_string(index=False))
+            tab = pd.DataFrame(d["comparacao"])[cols].head(10).round(3)
+            from .catalogo import nome_classificador
+            from .experimentos import INFO_VARIANTES
+            tab["modelo"] = tab["modelo"].map(nome_classificador)
+            tab["variante"] = tab["variante"].map(lambda x: INFO_VARIANTES.get(x, {}).get("nome", x))
+            print(tab.rename(columns={"modelo": "algoritmo", "variante": "representação"}).to_string(index=False))
 
 
 def _usuario(a):
@@ -427,7 +456,7 @@ def construir_parser() -> argparse.ArgumentParser:
     # ------------------------------------------------------------------ modelos
     p = cmd("experimento", "divide 50/25/25, compara representações x modelos e registra o melhor", _experimento,
             "Divide as amostras em treino/validação/teste (padrão 50/25/25, por amostra, estratificado), ajusta "
-            "5 representações x 12 modelos no treino, escolhe pela validação, re-treina com treino+validação e "
+            "5 representações x 15 algoritmos no treino (lista: fiep modelos catalogo), escolhe pela validação, re-treina com treino+validação e "
             "mede uma vez no teste. Registra o melhor em modelos/ (usado pela plataforma) e gera figuras/tabelas.")
     p.add_argument("--dados", default="dados",
                    help="pasta de dados (padrão: dados). Solto em dados/ = sorteio; dados/treino, dados/validacao e "
