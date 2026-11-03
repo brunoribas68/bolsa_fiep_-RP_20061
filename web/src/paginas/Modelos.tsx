@@ -152,6 +152,7 @@ function ListaTreinos({ treinos }: { treinos: Treino[] }) {
                 {t.estado === "rodando" ? t.etapa : t.mensagem}
                 {t.modelo && <> · <MuiLink component={Link} to={`/modelos/${t.modelo}`}>ver modelo {t.modelo}</MuiLink></>}
               </Typography>
+              {t.divisao && <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: .25 }}>{t.divisao}</Typography>}
             </Box>
             {(t.estado === "rodando" || t.estado === "na fila") && (
               <Box sx={{ width: { xs: "100%", sm: 220 } }}>
