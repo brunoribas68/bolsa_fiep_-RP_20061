@@ -332,6 +332,7 @@ export default function Modelos() {
                 Medido no conjunto de teste, que não participou de nenhuma escolha. Validação {num(m.validacao_balanced_accuracy, 3)} ·
                 validação cruzada no treino {num(m.cv_balanced_accuracy, 3)}{m.regressor && ` · carga estimada por ${cat?.regressores?.find(r => r.id === m.regressor)?.nome || m.regressor}`}.
               </Typography>
+              {m.resumo.teste && <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: .5 }}>{m.resumo.teste}</Typography>}
             </CardContent>
           </Card>
 
