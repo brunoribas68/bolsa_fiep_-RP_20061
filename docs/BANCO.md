@@ -8,6 +8,7 @@ O **modelo ORM em `fiep/orm/` é a fonte da verdade**. As tabelas ficam separada
 | `fiep/orm/cadastro.py` | `empresas`, `coletas` (cada envio de dados), `arquivos` (originais, por SHA-256) |
 | `fiep/orm/dados.py` | `amostras`, `plaqueamentos`, `medicoes`, `curvas` (pontos como vetores), `qc` |
 | `fiep/orm/ml.py` | `modelos`, `predicoes` |
+| `fiep/orm/genossensor.py` | `ensaios` (base do genossensor: branco/alvo, pico, eletrodo, concentração — [dicionário](DICIONARIO_DADOS.md)) |
 
 Views (criadas nas migrations): `v_medicoes`, `v_replicatas`, `v_qc_atual`, `v_predicoes`.
 
@@ -21,6 +22,7 @@ Padrão: SQLite em `dados/fiep.db`. Para Postgres: `pip install -e ".[postgres]"
 | `0001_esquema_inicial` | todas as tabelas |
 | `0002_views` | views de consulta |
 | `0003_dados_exemplo` | carrega `dados/exemplo_case` como a empresa "Exemplo (case sintético)" |
+| `0004_base_do_genossensor` | tabela `ensaios` do genossensor |
 
 ```bash
 fiep db migrar                       # cria/atualiza o banco (com os dados de exemplo)

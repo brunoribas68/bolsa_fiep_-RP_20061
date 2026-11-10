@@ -7,6 +7,7 @@ do projeto (cada mudança vira uma migration em `fiep/migracoes/`):
     cadastro.py  empresas e coletas (cada envio de dados), arquivos recebidos
     dados.py     amostras, plaqueamentos, medições, curvas, controle de qualidade
     ml.py        modelos treinados e previsões
+    genossensor.py  ensaios do genossensor (branco/alvo, pico, eletrodo, concentração)
 
 O mesmo modelo serve a pipeline (`fiep.db`), a API (`api/`) e as migrations (Alembic).
 Banco padrão: SQLite em `dados/fiep.db`; para Postgres, defina `FIEP_DB_URL`
@@ -27,9 +28,10 @@ from .auth import Usuario
 from .cadastro import Arquivo, Coleta, Empresa
 from .dados import Amostra, Curva, Medicao, Plaqueamento, ResultadoQC
 from .ml import ModeloML, Predicao
+from .genossensor import Ensaio
 
 __all__ = ["Base", "Usuario", "Empresa", "Coleta", "Arquivo", "Amostra", "Plaqueamento", "Medicao", "Curva",
-           "ResultadoQC", "ModeloML", "Predicao", "url_banco", "criar_engine", "fabrica_sessoes", "migrar"]
+           "ResultadoQC", "ModeloML", "Predicao", "Ensaio", "url_banco", "criar_engine", "fabrica_sessoes", "migrar"]
 
 BANCO_PADRAO = "dados/fiep.db"
 log = logging.getLogger(__name__)

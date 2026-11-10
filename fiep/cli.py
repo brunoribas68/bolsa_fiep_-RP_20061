@@ -348,6 +348,43 @@ def _usuario(a):
         print(f"{u.email} desativado.")
 
 
+def _rna(a):
+    import json
+    from . import db, genossensor as g
+    con = db.conectar(a.db)
+    if a.acao == "importar":
+        if not a.entrada:
+            raise SystemExit("importar precisa de --entrada (pasta com os .nox)")
+        r = g.importar(con, a.entrada, empresa=a.empresa, conjunto=a.conjunto, elemento=a.elemento,
+                       eletrodo=a.eletrodo, bacteria=a.bacteria)
+        print(f"{r['lidos']} arquivo(s) lido(s): {r['gravados']} gravado(s), {r['repetidos']} já estavam no banco, "
+              f"{r['sem_dados']} sem eletrodo/elemento/tipo (não gravados). {r['ligados_ao_branco']} ligado(s) ao branco.")
+        for x in r["avisos"]:
+            print("  aviso:", x)
+        a.acao = "tabela"
+    df = g.tabela(con)
+    if df.empty:
+        print("A base do genossensor está vazia. Comece com: fiep rna importar --entrada <pasta com .nox>")
+        return
+    if a.acao == "tabela":
+        cols = ["id", "arquivo", "eletrodo_id", "elemento_captura", "tipo", "alvo", "concentracao", "e_pico_v",
+                "i_pico_ua", "altura_ua", "branco_id", "sinal_rel_pct", "abaixo_do_branco"]
+        print(df[cols].round(3).to_string(index=False))
+        contra = df[df["abaixo_do_branco"] == False]  # noqa: E712
+        if len(contra):
+            print(f"\nATENÇÃO: {len(contra)} alvo(s) com pico acima do branco: {', '.join(contra['arquivo'])}")
+        if a.saida:
+            completa = g.tabela(con, incluir_curvas=bool(a.saida.endswith(".csv")))
+            completa.to_csv(a.saida, index=False) if a.saida.endswith(".csv") else completa.to_excel(a.saida, index=False)
+            print(f"\nBase salva em {a.saida}")
+        return
+    r = g.treinar(df, limiar_ng_ml=a.limiar, branco_como_negativo=not a.sem_branco)
+    print(json.dumps(r, indent=1, ensure_ascii=False))
+    if a.saida:
+        Path(a.saida).parent.mkdir(parents=True, exist_ok=True)
+        Path(a.saida).write_text(json.dumps(r, indent=1, ensure_ascii=False), encoding="utf-8")
+
+
 def _db(a):
     from . import db
     if a.acao == "zerar":
@@ -528,6 +565,28 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--formato", choices=["xlsx", "csv"], default="xlsx", help="exportar: formato (padrão xlsx)")
     p.add_argument("--saida", help="exportar/sql: arquivo ou pasta de saída")
     p.add_argument("--config", help=CONFIG_AJUDA)
+
+    p = cmd("rna", "base do genossensor (branco/alvo de RNA): importar, tabela, treinar", _rna,
+            "Ações:\n"
+            "  importar  lê os .nox DPV de --entrada, tira do nome do procedimento o elemento de captura, o tipo\n"
+            "            (branco/alvo/negativo) e a concentração, do nome do arquivo o eletrodo (E1..), extrai o pico\n"
+            "            e liga cada alvo ao branco do mesmo eletrodo. Correções: ensaios.csv na pasta\n"
+            "  tabela    mostra a base (com sinal relativo ao branco); --saida base.xlsx/.csv salva\n"
+            "  treinar   contaminado x não contaminado pelo pico + curva de calibração (sinal x log10 conc.)\n"
+            "Dicionário de dados: docs/DICIONARIO_DADOS.md")
+    p.add_argument("acao", choices=["importar", "tabela", "treinar"], help="o que fazer")
+    p.add_argument("--db", help=DB_AJUDA)
+    p.add_argument("--entrada", help="importar: pasta com os .nox")
+    p.add_argument("--empresa", help="importar: empresa/laboratório dos dados")
+    p.add_argument("--conjunto", choices=["treino", "validacao", "teste"], help="importar: conjunto fixo")
+    p.add_argument("--elemento", help="importar: elemento de captura de todos (se o nome não trouxer)")
+    p.add_argument("--eletrodo", help="importar: ID do eletrodo quando o nome do arquivo não trouxer E1, E2..")
+    p.add_argument("--bacteria", help="importar: bactéria de origem do RNA (ex.: E. coli)")
+    p.add_argument("--limiar", type=float, default=0.0,
+                   help="treinar: contaminado = alvo com concentração acima disto em ng/mL (padrão 0)")
+    p.add_argument("--sem-branco", action="store_true",
+                   help="treinar: não usar o branco como não contaminado (só os 'negativo')")
+    p.add_argument("--saida", help="tabela: .xlsx/.csv da base; treinar: .json com o resultado")
 
     # ------------------------------------------------------------------ modelos
     p = cmd("experimento", "divide 50/25/25, compara representações x modelos e registra o melhor", _experimento,

@@ -7,6 +7,7 @@ Gerado por `fiep docs` a partir da ajuda dos comandos — não edite à mão. Se
 | [`fiep planilha`](#fiep-planilha) | gera amostras.csv (1 linha por amostra) e metadados_nox.csv já preenchidos |
 | [`fiep excel`](#fiep-excel) | converte .nox para Excel no formato do NOVA |
 | [`fiep db`](#fiep-db) | banco de dados: migrar, importar, resumo, sql, exportar, exemplo, zerar |
+| [`fiep rna`](#fiep-rna) | base do genossensor (branco/alvo de RNA): importar, tabela, treinar |
 | [`fiep experimento`](#fiep-experimento) | divide 50/25/25, compara representações x modelos e registra o melhor |
 | [`fiep prever`](#fiep-prever) | classifica dados novos com o modelo registrado (por amostra e por eletrodo) |
 | [`fiep modelos`](#fiep-modelos) | modelos treinados: listar, mostrar, ativar, catalogo |
@@ -87,6 +88,41 @@ opções:
   --saida SAIDA                   exportar/sql: arquivo ou pasta de saída
   --config CONFIG                 arquivo de configuração (padrão: variável FIEP_CONFIG ou
                                   configs/default.toml)
+```
+
+## fiep rna
+
+```
+uso: fiep rna [-h] [--db DB] [--entrada ENTRADA] [--empresa EMPRESA] [--conjunto {treino,validacao,teste}]
+                [--elemento ELEMENTO] [--eletrodo ELETRODO] [--bacteria BACTERIA] [--limiar LIMIAR]
+                [--sem-branco] [--saida SAIDA]
+                {importar,tabela,treinar}
+
+Ações:
+  importar  lê os .nox DPV de --entrada, tira do nome do procedimento o elemento de captura, o tipo
+            (branco/alvo/negativo) e a concentração, do nome do arquivo o eletrodo (E1..), extrai o pico
+            e liga cada alvo ao branco do mesmo eletrodo. Correções: ensaios.csv na pasta
+  tabela    mostra a base (com sinal relativo ao branco); --saida base.xlsx/.csv salva
+  treinar   contaminado x não contaminado pelo pico + curva de calibração (sinal x log10 conc.)
+Dicionário de dados: docs/DICIONARIO_DADOS.md
+
+argumentos:
+  {importar,tabela,treinar}       o que fazer
+
+opções:
+  -h, --help                      mostra esta ajuda
+  --db DB                         arquivo SQLite ou URL do banco (padrão: variável FIEP_DB_URL ou
+                                  dados/fiep.db)
+  --entrada ENTRADA               importar: pasta com os .nox
+  --empresa EMPRESA               importar: empresa/laboratório dos dados
+  --conjunto {treino,validacao,teste}
+                                  importar: conjunto fixo
+  --elemento ELEMENTO             importar: elemento de captura de todos (se o nome não trouxer)
+  --eletrodo ELETRODO             importar: ID do eletrodo quando o nome do arquivo não trouxer E1, E2..
+  --bacteria BACTERIA             importar: bactéria de origem do RNA (ex.: E. coli)
+  --limiar LIMIAR                 treinar: contaminado = alvo com concentração acima disto em ng/mL (padrão 0)
+  --sem-branco                    treinar: não usar o branco como não contaminado (só os 'negativo')
+  --saida SAIDA                   tabela: .xlsx/.csv da base; treinar: .json com o resultado
 ```
 
 ## fiep experimento
