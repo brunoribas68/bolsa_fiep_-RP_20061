@@ -1,8 +1,9 @@
 # Dicionário de dados — base do genossensor (RNA)
 
-Base nova, feita para os ensaios do genossensor: um eletrodo impresso (SPCE) com um **elemento de
-captura** (oligonucleotídeo, ex.: `Oligo 4N`) é medido em DPV **sem o alvo** (o **branco**) e depois
-**com o RNA da bactéria** (o **alvo**) em várias concentrações. O sensor é *signal-off*: quando o RNA
+Base nova, feita para os ensaios do genossensor. Cada eletrodo impresso (SPCE) é medido em DPV em
+etapas: **bare** (antes da limpeza da superfície), **tratado** (depois da limpeza), **branco** (com o
+**elemento de captura**, oligonucleotídeo, ex.: `Oligo 4N`) e **alvo** (com o RNA da bactéria, em
+várias concentrações). O sensor é *signal-off*: quando o RNA
 hibridiza, o pico **cai** — o pico do alvo tem de ficar **abaixo do branco**.
 
 Tabela: `ensaios` (uma linha por arquivo `.nox` / voltamograma). Continuam no banco e ligadas a ela:
@@ -18,18 +19,18 @@ Tabela: `ensaios` (uma linha por arquivo `.nox` / voltamograma). Continuam no ba
 | `id` | inteiro | sim | número da linha | automático |
 | `empresa_id` | inteiro | não | empresa ou laboratório (tabela `empresas`) | `--empresa` |
 | `coleta_id` | inteiro | não | importação que trouxe a linha (tabela `coletas`) | automático |
-| `eletrodo_id` | texto | **sim** | ID do eletrodo, ex.: `E1` | nome do arquivo (`…-E1.nox`), `--eletrodo` ou `ensaios.csv` |
+| `eletrodo_id` | texto | **sim** | ID do eletrodo, ex.: `E1` (o mesmo em todas as etapas do eletrodo) | nome do arquivo (`…-E1.nox`), `--eletrodo` ou `ensaios.csv` |
 | `canal` | texto | não | instrumento/canal do potenciostato, ex.: `MAC80196#2` | `.nox` |
 
 ### O que está no eletrodo
 
 | Campo | Tipo | Obrigatório | Descrição | De onde vem |
 |---|---|---|---|---|
-| `elemento_captura` | texto | **sim** | sonda imobilizada (o "tipo do branco"), ex.: `Oligo 4N` | nome do procedimento, `--elemento` ou `ensaios.csv` |
-| `tipo` | texto | **sim** | `branco` (só a sonda), `alvo` (com RNA) ou `negativo` (amostra sem o RNA-alvo) | nome do procedimento (`Branco`, concentração, `negativo`/`controle`) |
+| `elemento_captura` | texto | sim no branco, alvo e negativo | sonda imobilizada (o "tipo do branco"), ex.: `Oligo 4N`; vazio em bare/tratado | nome do procedimento, `--elemento` ou `ensaios.csv` |
+| `tipo` | texto | **sim** | etapa: `bare` (antes da limpeza), `tratado` (depois da limpeza), `branco` (com a sonda), `alvo` (com RNA) ou `negativo` (amostra sem o RNA-alvo) | nome do arquivo; se fora do padrão, nome do procedimento |
 | `alvo` | texto | não | o que se quer detectar: `RNA` | nome do procedimento |
 | `bacteria` | texto | não | bactéria de origem do RNA, ex.: `E. coli` | `--bacteria` ou `ensaios.csv` |
-| `concentracao` | número | **sim** | concentração do alvo; **0** no branco e no negativo (o banco recusa outro valor) | nome do procedimento (`0,5 ng-mL`, `500 pg/mL`…) |
+| `concentracao` | número | **sim** | concentração do alvo em ng/mL; **0** em todas as etapas que não são alvo (o banco recusa outro valor) | nome do arquivo (`dpv-RNA-0,1-E1`); se fora do padrão, procedimento (`0,5 ng-mL`, `500 pg/mL`…) |
 | `unidade` | texto | sim | sempre `ng/mL` (pg, fg e µg são convertidos) | automático |
 | `branco_id` | inteiro | não | o branco de referência deste alvo/negativo (`ensaios.id`) | automático: branco do mesmo eletrodo, mesmo elemento de captura e mesma empresa, o mais recente antes da medição |
 
@@ -73,10 +74,11 @@ pela proeminência, o mesmo critério do resto da pipeline (`fiep/features.py`, 
 | Coluna | Fórmula |
 |---|---|
 | `altura_branco_ua` | `altura_ua` do branco ligado (`branco_id`) |
+| `altura_bare_ua`, `altura_tratado_ua` | `altura_ua` das etapas bare e tratado do mesmo eletrodo (qualidade do eletrodo) |
 | `sinal_rel_pct` | `100 × (altura_branco − altura) / altura_branco` — queda do pico em relação ao branco |
 | `abaixo_do_branco` | alvo com `altura_ua < altura_branco_ua` (regra do sensor); `False` gera aviso |
 | `log10_concentracao` | `log10(concentracao)` dos alvos |
-| rótulo (no treino) | **contaminado** = alvo com concentração acima de `--limiar` (padrão 0); **não contaminado** = negativo e, por padrão, o branco (`--sem-branco` usa só os negativos) |
+| rótulo (no treino) | **contaminado** = alvo com concentração acima de `--limiar` (padrão 0); **não contaminado** = negativo e, por padrão, o branco (`--sem-branco` usa só os negativos); bare e tratado ficam fora |
 
 ## Correções: `ensaios.csv`
 
@@ -89,11 +91,24 @@ dpv-rna-550-E1.nox;E1;E. coli;55;PASS
 dpv-rna-15-E1.nox;E3;E. coli;;FAIL
 ```
 
-## Como os arquivos devem chegar
+## Como os arquivos devem chegar (padrão da equipe)
 
-- Um `.nox` por medição DPV, com o procedimento no NOVA nomeado assim:
-  `DPV SPCE H2SO4 <elemento de captura> Branco` e `DPV SPCE H2SO4 <elemento de captura> RNA <conc> ng-mL`.
-- O ID do eletrodo no nome do arquivo: `dpv-branco-E1.nox`, `dpv-rna-15-E1.nox`.
+Regra: **técnica - etapa - concentração (ng/mL) - eletrodo**, um `.nox` por medição.
+
+| Arquivo | Etapa |
+|---|---|
+| `dpv-bare-Ej` | eletrodo antes da limpeza da superfície |
+| `dpv-tratado-Ej` | eletrodo depois da limpeza |
+| `dpv-branco-Ej` | eletrodo com o elemento de captura (oligonucleotídeo, concentração fixa) |
+| `dpv-RNA-i-Ej` | com o RNA-alvo na concentração `i` em ng/mL, sempre com decimal: `dpv-RNA-0,1-Ej`, `dpv-RNA-1,0-Ej`, `dpv-RNA-10,0-Ej`, `dpv-RNA-100,0-Ej` |
+| `dpv-negativo-Ej` | (extensão nossa) amostra sem o RNA-alvo, para o treino |
+
+`j` = número do eletrodo, o mesmo em todas as etapas dele. Dúvidas sobre o padrão: Adriano Silva.
+
+- O nome do arquivo manda na etapa, na concentração e no eletrodo. O procedimento do NOVA completa o
+  elemento de captura (ex.: `DPV SPCE H2SO4 Oligo 4N Branco`); se nome e procedimento discordarem,
+  vale o nome e a importação avisa.
+- Nomes antigos sem decimal (`dpv-rna-15-E1` = 1,5 ng/mL) continuam aceitos: a concentração vem do procedimento.
 - Para cada eletrodo, o **branco antes do alvo**, no mesmo eletrodo (é o que dá o sinal relativo).
 - Para treinar contaminado × não contaminado são precisos **controles negativos** (eletrodo com
   amostra sem o RNA-alvo, `negativo` no nome) e várias repetições de cada concentração em eletrodos

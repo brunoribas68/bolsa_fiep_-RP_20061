@@ -99,9 +99,10 @@ uso: fiep rna [-h] [--db DB] [--entrada ENTRADA] [--empresa EMPRESA] [--conjunto
                 {importar,tabela,treinar}
 
 Ações:
-  importar  lê os .nox DPV de --entrada, tira do nome do procedimento o elemento de captura, o tipo
-            (branco/alvo/negativo) e a concentração, do nome do arquivo o eletrodo (E1..), extrai o pico
-            e liga cada alvo ao branco do mesmo eletrodo. Correções: ensaios.csv na pasta
+  importar  lê os .nox DPV de --entrada. Do nome do arquivo (técnica-etapa-concentração-eletrodo:
+            dpv-bare-E1, dpv-tratado-E1, dpv-branco-E1, dpv-RNA-0,1-E1, dpv-negativo-E1) tira etapa,
+            concentração (ng/mL) e eletrodo; do procedimento do NOVA, o elemento de captura. Extrai o
+            pico e liga cada alvo ao branco do mesmo eletrodo. Correções: ensaios.csv na pasta
   tabela    mostra a base (com sinal relativo ao branco); --saida base.xlsx/.csv salva
   treinar   contaminado x não contaminado pelo pico + curva de calibração (sinal x log10 conc.)
 Dicionário de dados: docs/DICIONARIO_DADOS.md

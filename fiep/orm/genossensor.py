@@ -13,8 +13,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base, agora
 from .cadastro import CONJUNTOS
 
-# branco: só o elemento de captura; alvo: depois do RNA; negativo: amostra sem o RNA-alvo
-TIPOS = ("branco", "alvo", "negativo")
+# etapas do eletrodo: bare (antes da limpeza), tratado (depois da limpeza), branco (com o elemento de
+# captura), alvo (com o RNA) e negativo (amostra sem o RNA-alvo)
+TIPOS = ("bare", "tratado", "branco", "alvo", "negativo")
 
 
 class Ensaio(Base):
@@ -33,7 +34,7 @@ class Ensaio(Base):
     eletrodo_id: Mapped[str] = mapped_column(String(60), index=True)
     canal: Mapped[str | None] = mapped_column(String(60))
     # o que está no eletrodo
-    elemento_captura: Mapped[str] = mapped_column(String(120))
+    elemento_captura: Mapped[str | None] = mapped_column(String(120))   # vazio em bare/tratado
     tipo: Mapped[str] = mapped_column(String(10))
     alvo: Mapped[str | None] = mapped_column(String(120))
     bacteria: Mapped[str | None] = mapped_column(String(120))

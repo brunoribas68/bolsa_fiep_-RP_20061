@@ -568,9 +568,10 @@ def construir_parser() -> argparse.ArgumentParser:
 
     p = cmd("rna", "base do genossensor (branco/alvo de RNA): importar, tabela, treinar", _rna,
             "Ações:\n"
-            "  importar  lê os .nox DPV de --entrada, tira do nome do procedimento o elemento de captura, o tipo\n"
-            "            (branco/alvo/negativo) e a concentração, do nome do arquivo o eletrodo (E1..), extrai o pico\n"
-            "            e liga cada alvo ao branco do mesmo eletrodo. Correções: ensaios.csv na pasta\n"
+            "  importar  lê os .nox DPV de --entrada. Do nome do arquivo (técnica-etapa-concentração-eletrodo:\n"
+            "            dpv-bare-E1, dpv-tratado-E1, dpv-branco-E1, dpv-RNA-0,1-E1, dpv-negativo-E1) tira etapa,\n"
+            "            concentração (ng/mL) e eletrodo; do procedimento do NOVA, o elemento de captura. Extrai o\n"
+            "            pico e liga cada alvo ao branco do mesmo eletrodo. Correções: ensaios.csv na pasta\n"
             "  tabela    mostra a base (com sinal relativo ao branco); --saida base.xlsx/.csv salva\n"
             "  treinar   contaminado x não contaminado pelo pico + curva de calibração (sinal x log10 conc.)\n"
             "Dicionário de dados: docs/DICIONARIO_DADOS.md")

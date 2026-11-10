@@ -5,9 +5,10 @@ Fluxo:
     fiep rna tabela [--saida rna.xlsx]          # a base pronta (com sinal relativo ao branco)
     fiep rna treinar                            # contaminado x não contaminado + curva de calibração
 
-O nome do procedimento no NOVA traz quase tudo, ex.: "DPV SPCE H2SO4 Oligo 4N RNA 1,5 ng-mL"
-(técnica, eletrodo, tratamento, elemento de captura, alvo, concentração). O ID do eletrodo vem do nome
-do arquivo (…-E1.nox). O que faltar ou estiver errado se corrige com um `ensaios.csv` na pasta
+Nome do arquivo (padrão da equipe): técnica - etapa - concentração (ng/mL) - eletrodo, ex.:
+dpv-bare-E1, dpv-tratado-E1, dpv-branco-E1, dpv-RNA-0,1-E1, dpv-RNA-10,0-E1 (e dpv-negativo-E1).
+O nome do procedimento no NOVA completa o resto, ex.: "DPV SPCE H2SO4 Oligo 4N RNA 1,5 ng-mL"
+(eletrodo impresso, tratamento, elemento de captura). O que faltar ou estiver errado se corrige com um `ensaios.csv` na pasta
 (coluna `arquivo` + as colunas a sobrescrever). Dicionário: docs/DICIONARIO_DADOS.md.
 """
 from __future__ import annotations
@@ -50,10 +51,39 @@ def ler_procedimento(texto: str | None) -> dict:
     elif m:
         r["tipo"] = "alvo"
         r["concentracao"] = float(m.group(1).replace(",", ".")) * FATOR_NG[m.group(2).lower()]
+    elif re.search(r"\bbare\b", baixo):
+        r["tipo"], r["concentracao"] = "bare", 0.0
+    elif re.search(r"\btratad[oa]\b", baixo):
+        r["tipo"], r["concentracao"] = "tratado", 0.0
     else:
         r["tipo"], r["concentracao"] = None, None
     r["alvo"] = "RNA" if re.search(r"\brna\b", baixo) or r["tipo"] == "alvo" else None
     r["unidade"] = "ng/mL"
+    return r
+
+
+PADRAO_NOME = re.compile(
+    r"^(?P<tecnica>dpv|swv|cv)[-_ ](?P<etapa>bare|tratado|branco|rna|negativo)"
+    r"(?:[-_ ](?P<conc>\d+(?:[.,]\d+)?))?[-_ ](?P<eletrodo>E\d+)\b", re.I)
+
+
+def ler_nome(nome: str) -> dict:
+    """Lê o nome do arquivo no padrão técnica-etapa-concentração-eletrodo (vazio se não seguir)."""
+    m = PADRAO_NOME.match(Path(nome).stem)
+    if not m:
+        return {}
+    etapa = m["etapa"].lower()
+    r = {"tecnica": m["tecnica"].upper(), "eletrodo_id": m["eletrodo"].upper(),
+         "tipo": "alvo" if etapa == "rna" else etapa}
+    if etapa == "rna":
+        r["alvo"] = "RNA"
+        if m["conc"]:
+            r["concentracao"] = float(m["conc"].replace(",", "."))
+            # padrão novo sempre com decimal (0,1 / 10,0); sem decimal é o padrão antigo (15 = 1,5): o
+            # procedimento decide
+            r["conc_com_decimal"] = bool(re.search(r"[.,]", m["conc"]))
+    else:
+        r["concentracao"] = 0.0
     return r
 
 
@@ -70,6 +100,25 @@ def ler_arquivo(path: str | Path) -> dict:
     r = ler_procedimento(info.get("procedimento"))
     r.update(arquivo=path.name, sha256=sha256_arquivo(path), canal=info.get("instrumento"),
              medido_em=info.get("data_hora_procedimento"), eletrodo_id=eletrodo_do_nome(path.name))
+    n = ler_nome(path.name)
+    avisos = []
+    if n:
+        conc_proc = r.get("concentracao")
+        com_decimal = n.pop("conc_com_decimal", True)
+        if "concentracao" in n and not com_decimal and conc_proc is not None:
+            n.pop("concentracao")                   # nome antigo (rna-15): vale o procedimento
+        elif (n.get("concentracao") is not None and conc_proc is not None
+              and abs(n["concentracao"] - conc_proc) > 1e-9):
+            avisos.append(f"concentração no nome ({n['concentracao']:g}) ≠ procedimento ({conc_proc:g}); "
+                          "usei a do nome")
+        if r.get("tipo") and n["tipo"] != r["tipo"]:
+            avisos.append(f"etapa no nome ({n['tipo']}) ≠ procedimento ({r['tipo']}); usei a do nome")
+        r.update(n)
+        if r["tipo"] in ("bare", "tratado"):
+            r["alvo"] = None
+            r["elemento_captura"] = None             # ainda sem o elemento de captura
+    if avisos:
+        r["observacoes"] = "; ".join(avisos)
     if curva is None:
         r["observacoes"] = "sem curva de medição no arquivo"
         return r
@@ -106,7 +155,11 @@ def ler_pasta(pasta: str | Path) -> tuple[pd.DataFrame, list[str]]:
             for col, v in linha.dropna().items():
                 df.loc[alvo, col] = float(v.replace(",", ".")) if col == "concentracao" else v
     for _, r in df.iterrows() if len(df) else []:
-        falta = [c for c in ("eletrodo_id", "elemento_captura", "tipo") if pd.isna(r.get(c))]
+        if isinstance(r.get("observacoes"), str):
+            avisos.append(f"{r['arquivo']}: {r['observacoes']}")
+        falta = [c for c in ("eletrodo_id", "tipo") if pd.isna(r.get(c))]
+        if r.get("tipo") in ("branco", "alvo", "negativo") and pd.isna(r.get("elemento_captura")):
+            falta.append("elemento_captura")
         if falta:
             avisos.append(f"{r['arquivo']}: sem {', '.join(falta)} (corrija no ensaios.csv)")
     return df, avisos
@@ -121,11 +174,25 @@ def importar(s, pasta: str | Path, empresa: str | None = None, conjunto: str | N
 
     df, avisos = ler_pasta(pasta)
     for col, v in (("elemento_captura", elemento), ("eletrodo_id", eletrodo), ("bacteria", bacteria)):
-        if v:
-            df[col] = v if col != "eletrodo_id" else df.get(col, pd.Series(dtype=object)).fillna(v)
+        if v and len(df):
+            if col == "elemento_captura":
+                df.loc[df["tipo"].isin(["branco", "alvo", "negativo"]), col] = v
+            elif col == "eletrodo_id":
+                df[col] = df.get(col, pd.Series(index=df.index, dtype=object)).fillna(v)
+            else:
+                df[col] = v
     ja = set(s.scalars(select(Ensaio.sha256))) if len(df) else set()
     novos = df[~df["sha256"].isin(ja)] if len(df) else df
-    ok = novos.dropna(subset=["eletrodo_id", "elemento_captura", "tipo"]) if len(novos) else novos
+    n_dup = 0
+    if len(novos):
+        dup = novos[novos.duplicated("sha256")]
+        avisos += [f"{a}: mesmo conteúdo de outro arquivo da pasta (ignorado)" for a in dup["arquivo"]]
+        n_dup = len(dup)
+        novos = novos.drop_duplicates("sha256")
+    ok = novos.dropna(subset=["eletrodo_id", "tipo"]) if len(novos) else novos
+    if len(ok):
+        precisa = ok["tipo"].isin(["branco", "alvo", "negativo"])
+        ok = ok[~precisa | ok["elemento_captura"].notna()]
     emp = None
     if empresa:
         emp = s.scalar(select(Empresa).where(Empresa.nome == empresa)) or Empresa(nome=empresa)
@@ -146,7 +213,7 @@ def importar(s, pasta: str | Path, empresa: str | None = None, conjunto: str | N
     s.flush()
     ligados = ligar_brancos(s)
     s.commit()
-    return {"lidos": len(df), "gravados": len(ok), "repetidos": len(df) - len(novos),
+    return {"lidos": len(df), "gravados": len(ok), "repetidos": len(df) - len(novos) - n_dup,
             "sem_dados": len(novos) - len(ok), "ligados_ao_branco": ligados, "avisos": avisos,
             "coleta_id": coleta.id if coleta else None}
 
@@ -167,7 +234,7 @@ def ligar_brancos(s) -> int:
     from .orm import Ensaio
     brancos = list(s.scalars(select(Ensaio).where(Ensaio.tipo == "branco")))
     n = 0
-    for e in s.scalars(select(Ensaio).where(Ensaio.tipo != "branco", Ensaio.branco_id.is_(None))):
+    for e in s.scalars(select(Ensaio).where(Ensaio.tipo.in_(("alvo", "negativo")), Ensaio.branco_id.is_(None))):
         cand = [b for b in brancos if b.eletrodo_id == e.eletrodo_id and b.elemento_captura == e.elemento_captura
                 and b.empresa_id == e.empresa_id]
         if e.medido_em:
@@ -189,6 +256,10 @@ def tabela(s, incluir_curvas: bool = False) -> pd.DataFrame:
     altura = df.set_index("id")["altura_ua"]
     df["altura_branco_ua"] = df["branco_id"].map(altura)
     df.loc[df["tipo"] == "branco", "altura_branco_ua"] = df["altura_ua"]
+    # altura de cada etapa do mesmo eletrodo (bare, tratado, branco): qualidade do eletrodo
+    for etapa in ("bare", "tratado"):
+        h = df[df["tipo"] == etapa].sort_values("id").groupby("eletrodo_id")["altura_ua"].last()
+        df[f"altura_{etapa}_ua"] = df["eletrodo_id"].map(h)
     df["sinal_rel_pct"] = 100 * (df["altura_branco_ua"] - df["altura_ua"]) / df["altura_branco_ua"]
     # regra do sensor (signal-off): com o alvo, o pico tem de ficar abaixo do branco
     df["abaixo_do_branco"] = np.where(df["tipo"] == "alvo",
