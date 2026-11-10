@@ -76,3 +76,36 @@ def test_treinar_avisa_quando_falta_dado_e_roda_quando_ha(tmp_path):
     assert 0 <= r["balanced_accuracy"] <= 1
     cal = r["calibracao"]
     assert cal["n"] == 12 and cal["inclinacao_pct_por_decada"] > 5 and cal["lod_ng_ml"] is not None
+
+
+@pytest.mark.parametrize("nome, esperado", [
+    ("dpv-bare-E1.nox", dict(tipo="bare", concentracao=0.0, eletrodo_id="E1", tecnica="DPV")),
+    ("dpv-tratado-E3.nox", dict(tipo="tratado", concentracao=0.0, eletrodo_id="E3")),
+    ("dpv-branco-E12.nox", dict(tipo="branco", concentracao=0.0, eletrodo_id="E12")),
+    ("dpv-RNA-0,1-E2.nox", dict(tipo="alvo", concentracao=0.1, alvo="RNA", eletrodo_id="E2")),
+    ("dpv-RNA-100,0-E2.nox", dict(tipo="alvo", concentracao=100.0)),
+    ("dpv-negativo-E4.nox", dict(tipo="negativo", concentracao=0.0)),
+])
+def test_le_o_padrao_de_nome_da_equipe(nome, esperado):
+    r = g.ler_nome(nome)
+    for k, v in esperado.items():
+        assert r[k] == v, k
+
+
+def test_nome_fora_do_padrao_nao_inventa_nada():
+    assert g.ler_nome("medida qualquer.nox") == {}
+
+
+def test_bare_e_tratado_entram_sem_elemento_e_nao_ligam_ao_branco(tmp_path):
+    s = db.conectar(tmp_path / "g.db", dados_exemplo=False)
+    s.add(Ensaio(eletrodo_id="E1", tipo="bare", concentracao=0, altura_ua=3.0))
+    s.add(Ensaio(eletrodo_id="E1", tipo="tratado", concentracao=0, altura_ua=5.0))
+    s.add(_ensaio("E1", "branco", 0, 7, 0))
+    s.add(_ensaio("E1", "alvo", 1.0, 5, 5))
+    s.flush()
+    assert g.ligar_brancos(s) == 1
+    s.commit()
+    t = g.tabela(s).set_index("tipo")
+    assert t.loc["bare", "branco_id"] != t.loc["bare", "branco_id"]          # NaN
+    assert t.loc["alvo", "altura_tratado_ua"] == 5.0 and t.loc["alvo", "altura_bare_ua"] == 3.0
+    assert g.rotular(t.reset_index()).isna().sum() == 2                       # bare e tratado fora do treino

@@ -23,6 +23,7 @@ Padrão: SQLite em `dados/fiep.db`. Para Postgres: `pip install -e ".[postgres]"
 | `0002_views` | views de consulta |
 | `0003_dados_exemplo` | carrega `dados/exemplo_case` como a empresa "Exemplo (case sintético)" |
 | `0004_base_do_genossensor` | tabela `ensaios` do genossensor |
+| `0005_etapas_bare_tratado` | etapas bare e tratado; elemento de captura opcional nelas |
 
 ```bash
 fiep db migrar                       # cria/atualiza o banco (com os dados de exemplo)

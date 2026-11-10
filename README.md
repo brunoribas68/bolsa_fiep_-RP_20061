@@ -74,10 +74,11 @@ fiep verificar
 
 ## Base do genossensor (RNA) — o foco atual
 
-A partir de agora o treino olha só os ensaios do genossensor: **branco** (eletrodo só com o elemento
-de captura) e **alvo** (com o RNA da bactéria, em várias concentrações), medidos em DPV. Cada `.nox`
-vira uma linha da tabela `ensaios` com **pico voltamétrico, elemento de captura, tipo
-(branco/alvo/negativo), alvo, ID do eletrodo e concentração**. Dicionário completo:
+A partir de agora o treino olha só os ensaios do genossensor, medidos em DPV em etapas: **bare**
+(antes da limpeza), **tratado** (depois da limpeza), **branco** (eletrodo com o elemento de captura) e
+**alvo** (com o RNA da bactéria, em várias concentrações). Cada `.nox`
+vira uma linha da tabela `ensaios` com **pico voltamétrico, elemento de captura, etapa
+(bare/tratado/branco/alvo/negativo), alvo, ID do eletrodo e concentração**. Dicionário completo:
 [`docs/DICIONARIO_DADOS.md`](docs/DICIONARIO_DADOS.md).
 
 ```bash
@@ -86,9 +87,11 @@ fiep rna tabela --saida dados/rna_base.xlsx              # a base pronta (com si
 fiep rna treinar                                          # contaminado x não contaminado + curva de calibração
 ```
 
-- O nome do procedimento no NOVA dá técnica, eletrodo, tratamento, elemento de captura, tipo e
-  concentração (ex.: `DPV SPCE H2SO4 Oligo 4N RNA 1,5 ng-mL`); o ID do eletrodo vem do nome do
-  arquivo (`…-E1.nox`). O que faltar: `--elemento`, `--eletrodo`, `--bacteria` ou um `ensaios.csv` na pasta.
+- Nome dos arquivos (padrão da equipe: técnica-etapa-concentração-eletrodo): `dpv-bare-E1`,
+  `dpv-tratado-E1`, `dpv-branco-E1`, `dpv-RNA-0,1-E1`, `dpv-RNA-10,0-E1` (e `dpv-negativo-E1` para
+  amostra sem o alvo). Dele saem etapa, concentração (ng/mL) e eletrodo; do procedimento do NOVA, o
+  elemento de captura (ex.: `DPV SPCE H2SO4 Oligo 4N Branco`). Se discordarem, vale o nome e a
+  importação avisa. O que faltar: `--elemento`, `--eletrodo`, `--bacteria` ou um `ensaios.csv` na pasta.
 - Importar de novo não duplica (SHA-256). Alvo com pico acima do branco gera aviso (o sensor é *signal-off*).
 - `fiep rna treinar` só treina com pelo menos 3 medições de cada classe (valida deixando um eletrodo
   de fora); antes disso mostra o que falta e a curva de calibração (sinal relativo × log10 da
@@ -197,7 +200,7 @@ Sem instalar o pacote: `python -m fiep <comando>` na raiz do repositório.
 | `fiep db exportar` | banco inteiro para Excel (uma aba por tabela) ou CSV | `fiep db exportar --saida dados/banco.xlsx` · `--formato csv --saida pasta/` |
 | `fiep db exemplo` | carrega / remove o case de demonstração | `fiep db exemplo` · `fiep db exemplo --remover` |
 | `fiep db zerar` | apaga todos os dados e recria o banco; guarda uma cópia em `dados/backup/`, mantém as contas de usuário e pede confirmação (digite ZERAR) | `fiep db zerar` · `fiep db zerar --sem-exemplo` · `fiep db zerar --sem-usuarios` · `fiep db zerar --sim` |
-| `fiep rna importar` | base do genossensor: lê os `.nox` DPV (branco/alvo/negativo), extrai o pico, liga cada alvo ao branco do mesmo eletrodo | `fiep rna importar --entrada dados/rna [--empresa "SENAI"] [--elemento "Oligo 4N"] [--eletrodo E1] [--bacteria "E. coli"] [--conjunto teste]` |
+| `fiep rna importar` | base do genossensor: lê os `.nox` DPV (bare/tratado/branco/alvo/negativo, pelo nome `dpv-RNA-0,1-E1`), extrai o pico, liga cada alvo ao branco do mesmo eletrodo | `fiep rna importar --entrada dados/rna [--empresa "SENAI"] [--elemento "Oligo 4N"] [--eletrodo E1] [--bacteria "E. coli"] [--conjunto teste]` |
 | `fiep rna tabela` | mostra a base do genossensor com o sinal relativo ao branco e avisa alvo acima do branco | `fiep rna tabela [--saida base.xlsx\|base.csv]` |
 | `fiep rna treinar` | contaminado × não contaminado pelo pico (deixa um eletrodo de fora) + curva de calibração | `fiep rna treinar [--limiar 1] [--sem-branco] [--saida treino.json]` |
 | `fiep experimento` | divide 50/25/25, compara 5 representações × 15 algoritmos (ou só os escolhidos), escolhe na validação, mede no teste, registra o melhor | `fiep experimento [--artigo] [--rapido]` · `fiep experimento --db dados/fiep.db [--filtro "empresa_id = 2"] [--filtro-teste "..."] [--com-exemplo]` · `fiep experimento --algoritmos mlp,random_forest,svm_rbf --variantes dif_curva [--nao-ativar]` |
@@ -320,7 +323,7 @@ vão para `artigo/gerado/`. Como funciona em detalhe: [`docs/PIPELINE.md`](docs/
 
 Modelo ORM (SQLAlchemy) em [`fiep/orm/`](fiep/orm/), separado por domínio (`auth`, `cadastro`,
 `dados`, `ml`, `genossensor`), com migrations Alembic em [`fiep/migracoes/`](fiep/migracoes/) — a 0003
-carrega os dados de exemplo e a 0004 cria a tabela `ensaios` do genossensor
+carrega os dados de exemplo e a 0004/0005 criam a tabela `ensaios` do genossensor
 ([dicionário](docs/DICIONARIO_DADOS.md)). Para mudar o banco: edite o modelo, `alembic revision --autogenerate -m "..."`
 e `fiep db migrar`. Detalhes e consultas úteis: [`docs/BANCO.md`](docs/BANCO.md).
 
