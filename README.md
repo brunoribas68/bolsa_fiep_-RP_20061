@@ -72,6 +72,32 @@ fiep verificar
 
 ---
 
+## Base do genossensor (RNA) — o foco atual
+
+A partir de agora o treino olha só os ensaios do genossensor: **branco** (eletrodo só com o elemento
+de captura) e **alvo** (com o RNA da bactéria, em várias concentrações), medidos em DPV. Cada `.nox`
+vira uma linha da tabela `ensaios` com **pico voltamétrico, elemento de captura, tipo
+(branco/alvo/negativo), alvo, ID do eletrodo e concentração**. Dicionário completo:
+[`docs/DICIONARIO_DADOS.md`](docs/DICIONARIO_DADOS.md).
+
+```bash
+fiep rna importar --entrada dados/rna --empresa "SENAI"   # lê os .nox, tira o pico, liga cada alvo ao seu branco
+fiep rna tabela --saida dados/rna_base.xlsx              # a base pronta (com sinal relativo ao branco)
+fiep rna treinar                                          # contaminado x não contaminado + curva de calibração
+```
+
+- O nome do procedimento no NOVA dá técnica, eletrodo, tratamento, elemento de captura, tipo e
+  concentração (ex.: `DPV SPCE H2SO4 Oligo 4N RNA 1,5 ng-mL`); o ID do eletrodo vem do nome do
+  arquivo (`…-E1.nox`). O que faltar: `--elemento`, `--eletrodo`, `--bacteria` ou um `ensaios.csv` na pasta.
+- Importar de novo não duplica (SHA-256). Alvo com pico acima do branco gera aviso (o sensor é *signal-off*).
+- `fiep rna treinar` só treina com pelo menos 3 medições de cada classe (valida deixando um eletrodo
+  de fora); antes disso mostra o que falta e a curva de calibração (sinal relativo × log10 da
+  concentração; o limite de detecção aparece com 3 ou mais brancos).
+- Empresas, coletas e usuários continuam iguais. O case sintético ainda existe, mas não entra neste
+  fluxo; para tirá-lo do banco: `fiep db exemplo --remover`.
+
+---
+
 ## 2. Primeiros passos (com os dados de exemplo)
 
 ```bash
@@ -171,6 +197,9 @@ Sem instalar o pacote: `python -m fiep <comando>` na raiz do repositório.
 | `fiep db exportar` | banco inteiro para Excel (uma aba por tabela) ou CSV | `fiep db exportar --saida dados/banco.xlsx` · `--formato csv --saida pasta/` |
 | `fiep db exemplo` | carrega / remove o case de demonstração | `fiep db exemplo` · `fiep db exemplo --remover` |
 | `fiep db zerar` | apaga todos os dados e recria o banco; guarda uma cópia em `dados/backup/`, mantém as contas de usuário e pede confirmação (digite ZERAR) | `fiep db zerar` · `fiep db zerar --sem-exemplo` · `fiep db zerar --sem-usuarios` · `fiep db zerar --sim` |
+| `fiep rna importar` | base do genossensor: lê os `.nox` DPV (branco/alvo/negativo), extrai o pico, liga cada alvo ao branco do mesmo eletrodo | `fiep rna importar --entrada dados/rna [--empresa "SENAI"] [--elemento "Oligo 4N"] [--eletrodo E1] [--bacteria "E. coli"] [--conjunto teste]` |
+| `fiep rna tabela` | mostra a base do genossensor com o sinal relativo ao branco e avisa alvo acima do branco | `fiep rna tabela [--saida base.xlsx\|base.csv]` |
+| `fiep rna treinar` | contaminado × não contaminado pelo pico (deixa um eletrodo de fora) + curva de calibração | `fiep rna treinar [--limiar 1] [--sem-branco] [--saida treino.json]` |
 | `fiep experimento` | divide 50/25/25, compara 5 representações × 15 algoritmos (ou só os escolhidos), escolhe na validação, mede no teste, registra o melhor | `fiep experimento [--artigo] [--rapido]` · `fiep experimento --db dados/fiep.db [--filtro "empresa_id = 2"] [--filtro-teste "..."] [--com-exemplo]` · `fiep experimento --algoritmos mlp,random_forest,svm_rbf --variantes dif_curva [--nao-ativar]` |
 | `fiep modelos listar` | todos os modelos treinados com acurácia, acurácia balanceada, AUC e por amostra no teste (`*` = em uso) | `fiep modelos listar` |
 | `fiep modelos mostrar` | métricas de um modelo e a comparação de todos os algoritmos testados | `fiep modelos mostrar [--id <id>]` (sem `--id`: o modelo em uso) |
@@ -290,8 +319,9 @@ vão para `artigo/gerado/`. Como funciona em detalhe: [`docs/PIPELINE.md`](docs/
 ## 7. Banco de dados
 
 Modelo ORM (SQLAlchemy) em [`fiep/orm/`](fiep/orm/), separado por domínio (`auth`, `cadastro`,
-`dados`, `ml`), com migrations Alembic em [`fiep/migracoes/`](fiep/migracoes/) — a última carrega
-os dados de exemplo. Para mudar o banco: edite o modelo, `alembic revision --autogenerate -m "..."`
+`dados`, `ml`, `genossensor`), com migrations Alembic em [`fiep/migracoes/`](fiep/migracoes/) — a 0003
+carrega os dados de exemplo e a 0004 cria a tabela `ensaios` do genossensor
+([dicionário](docs/DICIONARIO_DADOS.md)). Para mudar o banco: edite o modelo, `alembic revision --autogenerate -m "..."`
 e `fiep db migrar`. Detalhes e consultas úteis: [`docs/BANCO.md`](docs/BANCO.md).
 
 ---
@@ -339,6 +369,7 @@ fiep/                   pacote: pipeline, banco e linha de comando
   figuras.py              figuras e tabelas (notebook e artigo)
   model.py, predict.py    treino, registro e previsão (por eletrodo e por amostra, níveis)
   registro.py             modelos treinados: métricas, comparação, troca do modelo em uso
+  genossensor.py          base do genossensor (RNA): leitura, pico, ligação ao branco, treino e calibração
   graficos.py             dados da tela Gráficos (curvas médias e descritores por eletrodo)
   orm/, migracoes/        modelo do banco e migrations
   db.py, legado.py        funções do banco; conversão do banco antigo
@@ -351,7 +382,7 @@ artigo/                 entrega 3
 configs/default.toml    todos os parâmetros (protocolos, QC, divisão, níveis, modelos)
 templates/              modelos de amostras.csv e metadados_nox.csv
 tools/nox2excel.py      conversor avulso .nox -> Excel/CSV (e .exe para quem não tem Python); CV sai só com o último scan (--scan todos | --scan N)
-docs/                   COMANDOS (todas as opções), PIPELINE, BANCO, PLATAFORMA
+docs/                   COMANDOS (todas as opções), PIPELINE, BANCO, PLATAFORMA, DICIONARIO_DADOS (genossensor)
 tests/                  testes automáticos
 ```
 
