@@ -350,7 +350,7 @@ notebook/               entrega 1
 artigo/                 entrega 3
 configs/default.toml    todos os parâmetros (protocolos, QC, divisão, níveis, modelos)
 templates/              modelos de amostras.csv e metadados_nox.csv
-tools/nox2excel.py      conversor avulso .nox -> Excel/CSV (e .exe para quem não tem Python)
+tools/nox2excel.py      conversor avulso .nox -> Excel/CSV (e .exe para quem não tem Python); CV sai só com o último scan (--scan todos | --scan N)
 docs/                   COMANDOS (todas as opções), PIPELINE, BANCO, PLATAFORMA
 tests/                  testes automáticos
 ```

@@ -42,3 +42,19 @@ def test_nox_reais_convertem():
         assert info["leitura"] == "completa", a.name
         assert curvas and len(curvas[0]["potential_v"]) == len(curvas[0]["current_ua"]) > 10
         assert curvas[0]["tecnica"] in {"DPV", "SWV", "CV", "LSV"}
+
+
+def test_conversor_cv_fica_com_o_ultimo_scan():
+    """nox2excel: CV com vários ciclos sai só com o último scan (ou o escolhido); DPV não muda."""
+    import sys
+    import pandas as pd
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+    from nox2excel import filtrar_scan
+    cv = pd.DataFrame({"Potential applied (V)": range(12), "Scan": [1] * 4 + [2] * 4 + [3] * 4})
+    assert filtrar_scan(cv)[0]["Scan"].unique().tolist() == [3]
+    assert filtrar_scan(cv, "2")[0]["Scan"].unique().tolist() == [2]
+    assert len(filtrar_scan(cv, "todos")[0]) == 12
+    df, nota = filtrar_scan(cv, "9")
+    assert df["Scan"].unique().tolist() == [3] and "não existe" in nota
+    dpv = pd.DataFrame({"Potential applied (V)": range(5)})
+    assert filtrar_scan(dpv)[0] is dpv and filtrar_scan(dpv)[1] is None

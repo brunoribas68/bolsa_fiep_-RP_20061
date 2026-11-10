@@ -17,12 +17,17 @@ O QUE SAI
   Uma planilha por arquivo, com as mesmas colunas da exportação padrão do NOVA
   (Index, Potential applied, Time, correntes, WE(1).Potential...).
 
+  Voltametria cíclica (CV) com vários ciclos: sai só o ÚLTIMO scan (ex.: o 6º),
+  que é o mais estável. DPV e SWV saem como antes.
+
 OPÇÕES (para quem usa o Prompt de Comando / PowerShell)
   NOX2Excel.exe pasta\ -j -o tudo.xlsx    todos os arquivos em um único Excel
   NOX2Excel.exe pasta\ -f csv             CSV em vez de Excel
   NOX2Excel.exe medida.nox -c             modo completo: todos os sinais, linha de
                                           base, picos, parâmetros e indicadores de
                                           qualidade
+  NOX2Excel.exe pasta\ --scan todos       CV: mantém todos os scans
+  NOX2Excel.exe pasta\ --scan 3           CV: só o scan 3
   NOX2Excel.exe --help                    lista todas as opções
 
 AVISOS

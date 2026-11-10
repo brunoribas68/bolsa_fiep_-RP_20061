@@ -10,6 +10,9 @@ mostra (ex.: "Potential applied (V)", "WE(1).Current (A)"), além dos resultados
 análise salvos no arquivo (ex.: correção de linha de base) e dos parâmetros do
 procedimento.
 
+Voltametria cíclica com vários ciclos: por padrão sai só o ÚLTIMO scan (o mais estável);
+--scan todos mantém todos e --scan 6 escolhe um. DPV/SWV (um scan só) não muda.
+
 Requisitos: Python 3.8+ (pandas e openpyxl são instalados automaticamente na 1ª vez).
 
 COMO USAR (Windows)
@@ -553,8 +556,23 @@ def _nome_med(stem, nome, i, total):
     return f'{s} {med}'
 
 
+def filtrar_scan(df, scan='ultimo'):
+    """Medidas em ciclos (CV): fica só um scan. scan = 'ultimo', 'todos' ou o número do scan.
+    Tabelas sem a coluna Scan, ou com um scan só (DPV, SWV), voltam como estão.
+    Devolve (tabela, texto do que foi feito ou None)."""
+    if scan == 'todos' or 'Scan' not in df.columns:
+        return df, None
+    scans = sorted(int(s) for s in df['Scan'].dropna().unique())
+    if len(scans) < 2:
+        return df, None
+    alvo = scans[-1] if scan == 'ultimo' else int(scan)
+    if alvo not in scans:
+        return df[df['Scan'] == scans[-1]], f'scan {alvo} não existe (há {scans[0]} a {scans[-1]}); mantido o último, {scans[-1]}'
+    return df[df['Scan'] == alvo], f'mantido só o scan {alvo} de {len(scans)}'
+
+
 def converter(arquivos, saida, formato='xlsx', juntar=False, decimal=',', incluir_brutos=False, log=print,
-              completo=False):
+              completo=False, scan='ultimo'):
     """
     arquivos : lista de caminhos .nox
     saida    : pasta de saída (ou arquivo, se juntar=True e formato xlsx)
@@ -562,6 +580,7 @@ def converter(arquivos, saida, formato='xlsx', juntar=False, decimal=',', inclui
     juntar   : True -> um único arquivo com todos os .nox (tabela empilhada + abas)
     completo : False -> igual à exportação do NOVA (uma aba, colunas da tabela de dados)
                True  -> todos os sinais, análises (linha de base, picos...), Info e Parametros
+    scan     : medidas em ciclos (CV) -> 'ultimo' (padrão), 'todos' ou o número do scan
     """
     import pandas as pd
     saida = Path(saida)
@@ -578,6 +597,14 @@ def converter(arquivos, saida, formato='xlsx', juntar=False, decimal=',', inclui
     if not completo:
         for _, r in res:
             r['medicoes'] = [(n, estilo_nova(df)) for n, df in r['medicoes'] if df.attrs.get('medidas')]
+    for p, r in res:
+        novas = []
+        for n, df in r['medicoes']:
+            df2, nota = filtrar_scan(df, scan)
+            if nota:
+                log(f'       {p.name} ({n}): {nota}')
+            novas.append((n, df2))
+        r['medicoes'] = novas
     _alertas([r['info'] for _, r in res])
     sep = ';' if decimal == ',' else ','
     gerados = []
@@ -738,6 +765,8 @@ def main(argv=None):
                     help='todos os sinais + análises (linha de base, picos), Info e Parametros')
     ap.add_argument('--ponto', action='store_true', help='CSV com ponto decimal e vírgula como separador (padrão: ; e vírgula decimal, formato do Excel em português)')
     ap.add_argument('--brutos', action='store_true', help='inclui também os sinais brutos internos (marcados com ! no NOVA)')
+    ap.add_argument('-s', '--scan', default='ultimo',
+                    help='voltametria cíclica (vários ciclos): "ultimo" (padrão), "todos" ou o número do scan, ex.: --scan 6')
     if argv is None and ('ipykernel' in sys.modules or 'spyder_kernels' in sys.modules):
         argv = []                           # rodando dentro do Jupyter/Spyder: ignora sys.argv do kernel
     a, _ = ap.parse_known_args(argv)
@@ -762,7 +791,10 @@ def main(argv=None):
         print('Nenhum .nox encontrado.'); return
     saida = Path(a.saida) if a.saida else (Path(entradas[0]) if Path(entradas[0]).is_dir() else arqs[0].parent)
     print(f'Convertendo {len(arqs)} arquivo(s)...')
-    converter(arqs, saida, a.formato, a.juntar, '.' if a.ponto else ',', a.brutos, completo=a.completo)
+    scan = a.scan.lower().replace('ú', 'u')
+    if scan not in ('ultimo', 'todos') and not scan.isdigit():
+        print('--scan aceita "ultimo", "todos" ou um número (ex.: 6).'); return
+    converter(arqs, saida, a.formato, a.juntar, '.' if a.ponto else ',', a.brutos, completo=a.completo, scan=scan)
 
 
 if __name__ == '__main__':
