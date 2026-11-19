@@ -132,6 +132,33 @@ def ler_arquivo(path: str | Path) -> dict:
     return r
 
 
+PASTAS = ("contaminado", "nao_contaminado")
+
+
+def criar_pastas(pasta: str | Path) -> list[Path]:
+    """Cria contaminado/ e nao_contaminado/ dentro da pasta (as que já existem ficam como estão)."""
+    criadas = [Path(pasta) / p for p in PASTAS]
+    for p in criadas:
+        p.mkdir(parents=True, exist_ok=True)
+    return criadas
+
+
+def rotulo_da_pasta(arquivo: Path, raiz: Path) -> int | None:
+    """1 se o arquivo está dentro de uma pasta contaminado/, 0 se nao_contaminado/, None se em nenhuma."""
+    from .metadados_auto import ROTULO_PALAVRAS, _busca
+    partes = arquivo.parent.relative_to(raiz).parts
+    return _busca(ROTULO_PALAVRAS, " ".join(partes).lower()) if partes else None
+
+
+def conferir_pasta(rotulo: int | None, tipo: str | None) -> str | None:
+    """Erro quando a pasta e o nome do arquivo discordam (None = tudo certo ou fora das pastas)."""
+    if rotulo == 1 and tipo != "alvo":
+        return f"está em contaminado/ mas é {tipo or 'sem etapa'}; só RNA vai nessa pasta"
+    if rotulo == 0 and tipo == "alvo":
+        return "está em nao_contaminado/ mas é RNA; RNA vai em contaminado/"
+    return None
+
+
 def ler_pasta(pasta: str | Path) -> tuple[pd.DataFrame, list[str]]:
     """Todos os .nox da pasta (e subpastas) + correções do ensaios.csv. Devolve (linhas, avisos)."""
     pasta = Path(pasta)
@@ -140,7 +167,7 @@ def ler_pasta(pasta: str | Path) -> tuple[pd.DataFrame, list[str]]:
     linhas = []
     for a in arquivos:
         try:
-            linhas.append(ler_arquivo(a))
+            linhas.append({**ler_arquivo(a), "rotulo_pasta": rotulo_da_pasta(a, pasta)})
         except Exception as ex:                        # arquivo corrompido não para o lote
             avisos.append(f"{a.name}: não foi possível ler ({ex})")
     df = pd.DataFrame(linhas)
@@ -154,7 +181,12 @@ def ler_pasta(pasta: str | Path) -> tuple[pd.DataFrame, list[str]]:
                 continue
             for col, v in linha.dropna().items():
                 df.loc[alvo, col] = float(v.replace(",", ".")) if col == "concentracao" else v
+    if len(df):
+        df["erro_pasta"] = [conferir_pasta(None if pd.isna(rp) else int(rp), tp if isinstance(tp, str) else None)
+                            for rp, tp in zip(df["rotulo_pasta"], df["tipo"])]
     for _, r in df.iterrows() if len(df) else []:
+        if isinstance(r["erro_pasta"], str):
+            avisos.append(f"{r['arquivo']}: {r['erro_pasta']} — NÃO gravado (mova o arquivo ou corrija o nome)")
         if isinstance(r.get("observacoes"), str):
             avisos.append(f"{r['arquivo']}: {r['observacoes']}")
         falta = [c for c in ("eletrodo_id", "tipo") if pd.isna(r.get(c))]
@@ -183,6 +215,8 @@ def importar(s, pasta: str | Path, empresa: str | None = None, conjunto: str | N
                 df[col] = v
     ja = set(s.scalars(select(Ensaio.sha256))) if len(df) else set()
     novos = df[~df["sha256"].isin(ja)] if len(df) else df
+    pasta_errada = novos[novos["erro_pasta"].notna()] if len(novos) else novos
+    novos = novos[novos["erro_pasta"].isna()] if len(novos) else novos
     n_dup = 0
     if len(novos):
         dup = novos[novos.duplicated("sha256")]
@@ -213,7 +247,7 @@ def importar(s, pasta: str | Path, empresa: str | None = None, conjunto: str | N
     s.flush()
     ligados = ligar_brancos(s)
     s.commit()
-    return {"lidos": len(df), "gravados": len(ok), "repetidos": len(df) - len(novos) - n_dup,
+    return {"lidos": len(df), "gravados": len(ok), "repetidos": len(df) - len(novos) - n_dup - len(pasta_errada), "pasta_errada": len(pasta_errada),
             "sem_dados": len(novos) - len(ok), "ligados_ao_branco": ligados, "avisos": avisos,
             "coleta_id": coleta.id if coleta else None}
 

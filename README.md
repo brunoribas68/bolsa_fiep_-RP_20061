@@ -82,6 +82,7 @@ vira uma linha da tabela `ensaios` com **pico voltamétrico, elemento de captura
 [`docs/DICIONARIO_DADOS.md`](docs/DICIONARIO_DADOS.md).
 
 ```bash
+fiep rna pastas --entrada dados/rna                      # cria dados/rna/contaminado e dados/rna/nao_contaminado
 fiep rna importar --entrada dados/rna --empresa "SENAI"   # lê os .nox, tira o pico, liga cada alvo ao seu branco
 fiep rna tabela --saida dados/rna_base.xlsx              # a base pronta (com sinal relativo ao branco)
 fiep rna treinar                                          # contaminado x não contaminado + curva de calibração
@@ -92,6 +93,9 @@ fiep rna treinar                                          # contaminado x não c
   amostra sem o alvo). Dele saem etapa, concentração (ng/mL) e eletrodo; do procedimento do NOVA, o
   elemento de captura (ex.: `DPV SPCE H2SO4 Oligo 4N Branco`). Se discordarem, vale o nome e a
   importação avisa. O que faltar: `--elemento`, `--eletrodo`, `--bacteria` ou um `ensaios.csv` na pasta.
+- Pastas: `contaminado/` recebe só `dpv-RNA-…`; `nao_contaminado/` recebe branco, negativo, bare e
+  tratado. Arquivo na pasta errada (ex.: um branco em `contaminado/`) **não é gravado** e a importação
+  diz qual é. Arquivos fora dessas pastas continuam aceitos (o rótulo vem só do nome).
 - Importar de novo não duplica (SHA-256). Alvo com pico acima do branco gera aviso (o sensor é *signal-off*).
 - `fiep rna treinar` só treina com pelo menos 3 medições de cada classe (valida deixando um eletrodo
   de fora); antes disso mostra o que falta e a curva de calibração (sinal relativo × log10 da
@@ -201,6 +205,7 @@ Sem instalar o pacote: `python -m fiep <comando>` na raiz do repositório.
 | `fiep db exemplo` | carrega / remove o case de demonstração | `fiep db exemplo` · `fiep db exemplo --remover` |
 | `fiep db zerar` | apaga todos os dados e recria o banco; guarda uma cópia em `dados/backup/`, mantém as contas de usuário e pede confirmação (digite ZERAR) | `fiep db zerar` · `fiep db zerar --sem-exemplo` · `fiep db zerar --sem-usuarios` · `fiep db zerar --sim` |
 | `fiep rna importar` | base do genossensor: lê os `.nox` DPV (bare/tratado/branco/alvo/negativo, pelo nome `dpv-RNA-0,1-E1`), extrai o pico, liga cada alvo ao branco do mesmo eletrodo | `fiep rna importar --entrada dados/rna [--empresa "SENAI"] [--elemento "Oligo 4N"] [--eletrodo E1] [--bacteria "E. coli"] [--conjunto teste]` |
+| `fiep rna pastas` | cria `contaminado/` e `nao_contaminado/` na pasta dos ensaios | `fiep rna pastas --entrada dados/rna` |
 | `fiep rna tabela` | mostra a base do genossensor com o sinal relativo ao branco e avisa alvo acima do branco | `fiep rna tabela [--saida base.xlsx\|base.csv]` |
 | `fiep rna treinar` | contaminado × não contaminado pelo pico (deixa um eletrodo de fora) + curva de calibração | `fiep rna treinar [--limiar 1] [--sem-branco] [--saida treino.json]` |
 | `fiep experimento` | divide 50/25/25, compara 5 representações × 15 algoritmos (ou só os escolhidos), escolhe na validação, mede no teste, registra o melhor | `fiep experimento [--artigo] [--rapido]` · `fiep experimento --db dados/fiep.db [--filtro "empresa_id = 2"] [--filtro-teste "..."] [--com-exemplo]` · `fiep experimento --algoritmos mlp,random_forest,svm_rbf --variantes dif_curva [--nao-ativar]` |

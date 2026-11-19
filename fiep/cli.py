@@ -351,6 +351,13 @@ def _usuario(a):
 def _rna(a):
     import json
     from . import db, genossensor as g
+    if a.acao == "pastas":
+        if not a.entrada:
+            raise SystemExit("pastas precisa de --entrada (onde criar contaminado/ e nao_contaminado/)")
+        for p in g.criar_pastas(a.entrada):
+            print("pronta:", p)
+        print("contaminado/: só dpv-RNA-…  |  nao_contaminado/: branco, negativo, bare e tratado")
+        return
     con = db.conectar(a.db)
     if a.acao == "importar":
         if not a.entrada:
@@ -358,7 +365,8 @@ def _rna(a):
         r = g.importar(con, a.entrada, empresa=a.empresa, conjunto=a.conjunto, elemento=a.elemento,
                        eletrodo=a.eletrodo, bacteria=a.bacteria)
         print(f"{r['lidos']} arquivo(s) lido(s): {r['gravados']} gravado(s), {r['repetidos']} já estavam no banco, "
-              f"{r['sem_dados']} sem eletrodo/elemento/tipo (não gravados). {r['ligados_ao_branco']} ligado(s) ao branco.")
+              f"{r['sem_dados']} sem eletrodo/elemento/tipo e {r['pasta_errada']} na pasta errada (não gravados). "
+              f"{r['ligados_ao_branco']} ligado(s) ao branco.")
         for x in r["avisos"]:
             print("  aviso:", x)
         a.acao = "tabela"
@@ -568,16 +576,18 @@ def construir_parser() -> argparse.ArgumentParser:
 
     p = cmd("rna", "base do genossensor (branco/alvo de RNA): importar, tabela, treinar", _rna,
             "Ações:\n"
+            "  pastas    cria contaminado/ (só RNA) e nao_contaminado/ (branco, negativo, bare, tratado) em --entrada\n"
             "  importar  lê os .nox DPV de --entrada. Do nome do arquivo (técnica-etapa-concentração-eletrodo:\n"
             "            dpv-bare-E1, dpv-tratado-E1, dpv-branco-E1, dpv-RNA-0,1-E1, dpv-negativo-E1) tira etapa,\n"
             "            concentração (ng/mL) e eletrodo; do procedimento do NOVA, o elemento de captura. Extrai o\n"
-            "            pico e liga cada alvo ao branco do mesmo eletrodo. Correções: ensaios.csv na pasta\n"
+            "            pico e liga cada alvo ao branco do mesmo eletrodo. Arquivo na pasta errada (ex.: branco\n"
+            "            em contaminado/) não é gravado. Correções: ensaios.csv na pasta\n"
             "  tabela    mostra a base (com sinal relativo ao branco); --saida base.xlsx/.csv salva\n"
             "  treinar   contaminado x não contaminado pelo pico + curva de calibração (sinal x log10 conc.)\n"
             "Dicionário de dados: docs/DICIONARIO_DADOS.md")
-    p.add_argument("acao", choices=["importar", "tabela", "treinar"], help="o que fazer")
+    p.add_argument("acao", choices=["pastas", "importar", "tabela", "treinar"], help="o que fazer")
     p.add_argument("--db", help=DB_AJUDA)
-    p.add_argument("--entrada", help="importar: pasta com os .nox")
+    p.add_argument("--entrada", help="importar: pasta com os .nox; pastas: onde criar as subpastas")
     p.add_argument("--empresa", help="importar: empresa/laboratório dos dados")
     p.add_argument("--conjunto", choices=["treino", "validacao", "teste"], help="importar: conjunto fixo")
     p.add_argument("--elemento", help="importar: elemento de captura de todos (se o nome não trouxer)")

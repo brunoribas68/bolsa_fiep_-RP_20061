@@ -109,3 +109,22 @@ def test_bare_e_tratado_entram_sem_elemento_e_nao_ligam_ao_branco(tmp_path):
     assert t.loc["bare", "branco_id"] != t.loc["bare", "branco_id"]          # NaN
     assert t.loc["alvo", "altura_tratado_ua"] == 5.0 and t.loc["alvo", "altura_bare_ua"] == 3.0
     assert g.rotular(t.reset_index()).isna().sum() == 2                       # bare e tratado fora do treino
+
+
+def test_pastas_contaminado_e_nao_contaminado(tmp_path):
+    c, n = g.criar_pastas(tmp_path / "rna")
+    assert c.is_dir() and n.is_dir()
+    assert g.rotulo_da_pasta(c / "dpv-RNA-1,0-E1.nox", tmp_path / "rna") == 1
+    assert g.rotulo_da_pasta(n / "dpv-branco-E1.nox", tmp_path / "rna") == 0
+    assert g.rotulo_da_pasta(tmp_path / "rna" / "dpv-branco-E1.nox", tmp_path / "rna") is None
+    # o nome do arquivo não conta, só a pasta (dpv-negativo-E1 solto não vira rótulo)
+    assert g.rotulo_da_pasta(tmp_path / "rna" / "dpv-negativo-E1.nox", tmp_path / "rna") is None
+
+
+@pytest.mark.parametrize("rotulo, tipo, erro", [
+    (1, "alvo", False), (1, "branco", True), (1, "bare", True),
+    (0, "branco", False), (0, "negativo", False), (0, "tratado", False), (0, "alvo", True),
+    (None, "alvo", False), (None, "branco", False),
+])
+def test_arquivo_na_pasta_errada_e_barrado(rotulo, tipo, erro):
+    assert (g.conferir_pasta(rotulo, tipo) is not None) == erro

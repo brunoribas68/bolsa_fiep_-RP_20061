@@ -103,7 +103,21 @@ Regra: **técnica - etapa - concentração (ng/mL) - eletrodo**, um `.nox` por m
 | `dpv-RNA-i-Ej` | com o RNA-alvo na concentração `i` em ng/mL, sempre com decimal: `dpv-RNA-0,1-Ej`, `dpv-RNA-1,0-Ej`, `dpv-RNA-10,0-Ej`, `dpv-RNA-100,0-Ej` |
 | `dpv-negativo-Ej` | (extensão nossa) amostra sem o RNA-alvo, para o treino |
 
-`j` = número do eletrodo, o mesmo em todas as etapas dele. Dúvidas sobre o padrão: Adriano Silva.
+`j` = número do eletrodo, o mesmo em todas as etapas dele.
+
+### Pastas
+
+`fiep rna pastas --entrada dados/rna` cria:
+
+```
+dados/rna/
+  contaminado/       só dpv-RNA-i-Ej
+  nao_contaminado/   dpv-branco-Ej, dpv-negativo-Ej, dpv-bare-Ej, dpv-tratado-Ej
+```
+
+A pasta é uma conferência: o rótulo continua vindo do nome do arquivo, e um arquivo cuja pasta
+discorda do nome (branco em `contaminado/`, RNA em `nao_contaminado/`) não é gravado; a importação
+avisa qual é. Arquivos fora dessas duas pastas são aceitos sem conferência. Dúvidas sobre o padrão: Adriano Silva.
 
 - O nome do arquivo manda na etapa, na concentração e no eletrodo. O procedimento do NOVA completa o
   elemento de captura (ex.: `DPV SPCE H2SO4 Oligo 4N Branco`); se nome e procedimento discordarem,

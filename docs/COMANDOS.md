@@ -96,25 +96,28 @@ opções:
 uso: fiep rna [-h] [--db DB] [--entrada ENTRADA] [--empresa EMPRESA] [--conjunto {treino,validacao,teste}]
                 [--elemento ELEMENTO] [--eletrodo ELETRODO] [--bacteria BACTERIA] [--limiar LIMIAR]
                 [--sem-branco] [--saida SAIDA]
-                {importar,tabela,treinar}
+                {pastas,importar,tabela,treinar}
 
 Ações:
+  pastas    cria contaminado/ (só RNA) e nao_contaminado/ (branco, negativo, bare, tratado) em --entrada
   importar  lê os .nox DPV de --entrada. Do nome do arquivo (técnica-etapa-concentração-eletrodo:
             dpv-bare-E1, dpv-tratado-E1, dpv-branco-E1, dpv-RNA-0,1-E1, dpv-negativo-E1) tira etapa,
             concentração (ng/mL) e eletrodo; do procedimento do NOVA, o elemento de captura. Extrai o
-            pico e liga cada alvo ao branco do mesmo eletrodo. Correções: ensaios.csv na pasta
+            pico e liga cada alvo ao branco do mesmo eletrodo. Arquivo na pasta errada (ex.: branco
+            em contaminado/) não é gravado. Correções: ensaios.csv na pasta
   tabela    mostra a base (com sinal relativo ao branco); --saida base.xlsx/.csv salva
   treinar   contaminado x não contaminado pelo pico + curva de calibração (sinal x log10 conc.)
 Dicionário de dados: docs/DICIONARIO_DADOS.md
 
 argumentos:
-  {importar,tabela,treinar}       o que fazer
+  {pastas,importar,tabela,treinar}
+                                  o que fazer
 
 opções:
   -h, --help                      mostra esta ajuda
   --db DB                         arquivo SQLite ou URL do banco (padrão: variável FIEP_DB_URL ou
                                   dados/fiep.db)
-  --entrada ENTRADA               importar: pasta com os .nox
+  --entrada ENTRADA               importar: pasta com os .nox; pastas: onde criar as subpastas
   --empresa EMPRESA               importar: empresa/laboratório dos dados
   --conjunto {treino,validacao,teste}
                                   importar: conjunto fixo
