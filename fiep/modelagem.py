@@ -29,7 +29,7 @@ import pandas as pd
 from . import __version__
 from .catalogo import classificadores, nome_classificador
 from .pico import CAMPOS as CAMPOS_PICO
-from .pico import medir_pico
+from .pico import linha_base, medir_pico
 
 N_PONTOS = 100                 # pontos da curva na grade comum de potencial
 MIN_POR_CLASSE = 3             # medições de branco e de RNA para treinar
@@ -48,6 +48,14 @@ INFO_VARIANTES = {
     "derivada": dict(nome="Derivada da curva",
                      o_que="A inclinação da curva (filtro de Savitzky-Golay). Ignora deslocamentos da linha de "
                            "base e realça o formato do pico."),
+    "base_vales": dict(nome="Curva sem a base (vale a vale)",
+                       o_que="A curva inteira menos uma reta entre o ponto mais baixo de cada lado do pico: a base "
+                             "fica plana em zero, como na correção linear do NOVA. Tira inclinação e deslocamento da "
+                             "base, que variam de eletrodo para eletrodo."),
+    "base_als": dict(nome="Curva sem a base (ALS)",
+                     o_que="A curva inteira menos uma base suave que passa por baixo do sinal (mínimos quadrados "
+                           "assimétricos, Eilers e Boelens 2005). Acompanha bases curvas, como a subida da dupla "
+                           "camada nas pontas."),
     "pico": dict(nome="Medidas do pico",
                  o_que="Seis números: potencial e corrente do pico, corrente da base, altura acima da base, "
                        "largura a meia altura e área. Simples e fácil de explicar; perde o resto da curva."),
@@ -89,6 +97,8 @@ def representar(curvas: list[tuple], variante: str, grade: np.ndarray) -> pd.Dat
     elif variante == "derivada":
         from scipy.signal import savgol_filter
         Y = savgol_filter(Y, 11, 3, deriv=1, axis=1)
+    elif variante in ("base_vales", "base_als"):
+        Y = np.vstack([y - linha_base(grade, y, variante.split("_")[1]) for y in Y])
     elif variante != "curva":
         raise ValueError(f"representação desconhecida: {variante}")
     return pd.DataFrame(Y, columns=[f"{variante}_{e:+.3f}V" for e in grade])

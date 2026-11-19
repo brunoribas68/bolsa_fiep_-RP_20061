@@ -165,7 +165,7 @@ def test_treino_pela_plataforma_previsao_e_graficos(plataforma):
     assert len(g["curvas"]) == 48 and len(g["curvas"][0]["e"]) == 179 and len(g["pontos"]) == 48
     cat = plataforma.get("/api/catalogo").json()
     assert {"log_reg", "mlp", "sisso"} <= {a["id"] for a in cat["algoritmos"]}
-    assert {v["id"] for v in cat["variantes"]} == {"curva", "forma", "derivada", "pico"}
+    assert {v["id"] for v in cat["variantes"]} == {"curva", "forma", "derivada", "base_vales", "base_als", "pico"}
     r = plataforma.post("/api/treinos", json={"algoritmos": ["log_reg", "lda"], "variantes": ["curva"],
                                               "ativar": True}, headers=H)
     assert r.status_code == 202

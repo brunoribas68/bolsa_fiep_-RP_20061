@@ -387,7 +387,7 @@ def construir_parser() -> argparse.ArgumentParser:
             "            pico e liga cada RNA ao branco do mesmo eletrodo. Arquivo na pasta errada, de outra etapa\n"
             "            (bare, tratado...) ou sem eletrodo não é gravado. Correções: ensaios.csv na pasta\n"
             "  tabela    mostra a base (pico, queda em relação ao branco, calibração); --saida base.xlsx/.csv salva\n"
-            "  treinar   compara 4 representações da curva x 15 algoritmos (validação por eletrodo), mede o melhor\n"
+            "  treinar   compara 6 representações da curva x 15 algoritmos (validação por eletrodo), mede o melhor\n"
             "            no teste (se houver eletrodos suficientes) e o registra como modelo em uso\n"
             "  prever    classifica os .nox de --entrada (arquivo ou pasta) com o modelo em uso\n"
             "Dicionário de dados: docs/DICIONARIO_DADOS.md")

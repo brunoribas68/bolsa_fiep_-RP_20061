@@ -14,3 +14,15 @@ def test_pico_ignora_a_subida_na_ponta():
 
 def test_curva_curta_nao_tem_pico():
     assert medir_pico([0, 0.1, 0.2], [1, 2, 1]) == {}
+
+
+def test_linha_de_base_tira_a_inclinacao():
+    from fiep.pico import linha_base
+    e = np.linspace(-0.3, 0.6, 180)
+    pico = 5 * np.exp(-((e - 0.15) / 0.05) ** 2)
+    i = pico + 10 + 8 * e                               # base inclinada e deslocada
+    for metodo in ("vales", "als"):
+        c = i - linha_base(e, i, metodo)
+        borda = (e < -0.1) | (e > 0.4)
+        assert abs(c.max() - 5) < 0.35, metodo                   # a altura volta a ser a do pico
+        assert np.abs(c[borda]).max() < 0.35, metodo             # e a base fica perto de zero

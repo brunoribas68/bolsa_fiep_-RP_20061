@@ -151,7 +151,7 @@ Sem instalar o pacote: `python -m fiep <comando>` na raiz do repositório.
 | `fiep rna pastas` | cria `contaminado/` (só RNA) e `nao_contaminado/` (só branco) | `fiep rna pastas --entrada dados/rna` |
 | `fiep rna importar` | lê os `.nox`, mede o pico e grava na base; liga cada RNA ao branco do mesmo eletrodo | `fiep rna importar --entrada dados/rna [--empresa "SENAI"] [--elemento "Oligo 4N"] [--eletrodo E1] [--bacteria "E. coli"]` |
 | `fiep rna tabela` | mostra a base com a queda do pico em relação ao branco e a calibração; avisa RNA acima do branco | `fiep rna tabela [--saida base.xlsx\|base.csv]` |
-| `fiep rna treinar` | compara 4 representações da curva × 15 algoritmos (validação por eletrodo), mede o melhor no teste e o registra como modelo em uso | `fiep rna treinar [--algoritmos log_reg lda] [--representacoes curva pico] [--seed 42] [--rapido] [--sem-ativar] [--saida cartao.json]` |
+| `fiep rna treinar` | compara 6 representações da curva × 15 algoritmos (validação por eletrodo), mede o melhor no teste e o registra como modelo em uso | `fiep rna treinar [--algoritmos log_reg lda] [--representacoes curva pico] [--seed 42] [--rapido] [--sem-ativar] [--saida cartao.json]` |
 | `fiep rna prever` | classifica `.nox` novos com o modelo em uso | `fiep rna prever --entrada pasta/ [--id <modelo>] [--salvar]` |
 | `fiep modelos listar` | modelos treinados, com a acurácia balanceada de referência (`*` = em uso) | `fiep modelos listar` |
 | `fiep modelos mostrar` | dados, validação e a comparação completa de um modelo | `fiep modelos mostrar --id <id>` |
@@ -179,9 +179,11 @@ com o último scan (`--scan todos` ou `--scan N` para outros). Ver [`tools/LEIA-
 
 - **O que o modelo vê**: um voltamograma por vez, sem comparar com o branco do eletrodo. Rótulo: branco =
   não contaminado, RNA (qualquer concentração) = contaminado. Ensaios reprovados no QC ficam de fora.
-- **Representações da curva** (4): a curva inteira (100 pontos na faixa comum de potencial); a forma
-  (reescalada entre 0 e 1); a derivada (Savitzky-Golay); as medidas do pico (potencial, corrente, base,
-  altura, largura, área).
+- **Representações da curva** (6): a curva inteira (100 pontos na faixa comum de potencial); a forma
+  (reescalada entre 0 e 1); a derivada (Savitzky-Golay); a curva **sem a linha de base** ("achatamento"),
+  por reta vale a vale (como a base linear do NOVA) ou por ALS (base suave por baixo do sinal); as medidas
+  do pico (potencial, corrente, base, altura, largura, área). A comparação diz, com os dados, se tirar a
+  base ajuda — ver [`docs/PIPELINE.md`](docs/PIPELINE.md).
 - **Algoritmos** (15): regressão logística (L2 em 3 intensidades e L1), LDA, SVM RBF (2), kNN, floresta
   aleatória, extra trees, gradient boosting, rede neural MLP, a rede de **Aliev et al. (2024)**
   (3 camadas de 250 neurônios; a arquitetura do artigo, treinada nos nossos dados), naive Bayes e

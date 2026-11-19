@@ -18,8 +18,9 @@ Gerado por `fiep docs` a partir da ajuda dos comandos — não edite à mão. Se
 ```
 uso: fiep rna [-h] [--entrada ENTRADA] [--db DB] [--empresa EMPRESA] [--elemento ELEMENTO]
                 [--eletrodo ELETRODO] [--bacteria BACTERIA] [--algoritmos ALG [ALG ...]]
-                [--representacoes {curva,forma,derivada,pico} [{curva,forma,derivada,pico} ...]] [--seed SEED]
-                [--rapido] [--sem-ativar] [--modelos MODELOS] [--id ID] [--salvar] [--saida SAIDA]
+                [--representacoes {curva,forma,derivada,base_vales,base_als,pico} [{curva,forma,derivada,base_vales,base_als,pico} ...]]
+                [--seed SEED] [--rapido] [--sem-ativar] [--modelos MODELOS] [--id ID] [--salvar]
+                [--saida SAIDA]
                 {pastas,importar,tabela,treinar,prever}
 
 Ações:
@@ -29,7 +30,7 @@ Ações:
             pico e liga cada RNA ao branco do mesmo eletrodo. Arquivo na pasta errada, de outra etapa
             (bare, tratado...) ou sem eletrodo não é gravado. Correções: ensaios.csv na pasta
   tabela    mostra a base (pico, queda em relação ao branco, calibração); --saida base.xlsx/.csv salva
-  treinar   compara 4 representações da curva x 15 algoritmos (validação por eletrodo), mede o melhor
+  treinar   compara 6 representações da curva x 15 algoritmos (validação por eletrodo), mede o melhor
             no teste (se houver eletrodos suficientes) e o registra como modelo em uso
   prever    classifica os .nox de --entrada (arquivo ou pasta) com o modelo em uso
 Dicionário de dados: docs/DICIONARIO_DADOS.md
@@ -48,7 +49,7 @@ opções:
   --eletrodo ELETRODO             importar: ID do eletrodo de quem não tiver E1, E2.. no nome
   --bacteria BACTERIA             importar: bactéria de origem do RNA (ex.: E. coli)
   --algoritmos ALG [ALG ...]      treinar: só estes algoritmos (padrão: os 15; lista em fiep modelos catalogo)
-  --representacoes {curva,forma,derivada,pico} [{curva,forma,derivada,pico} ...]
+  --representacoes {curva,forma,derivada,base_vales,base_als,pico} [{curva,forma,derivada,base_vales,base_als,pico} ...]
                                   treinar: só estas representações da curva (padrão: todas)
   --seed SEED                     treinar: semente dos sorteios (padrão: 42)
   --rapido                        treinar: só 3 algoritmos (teste rápido)
