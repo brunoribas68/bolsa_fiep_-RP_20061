@@ -1,53 +1,31 @@
-"""Gráficos exploratórios: voltamogramas médios (linha) e descritores por eletrodo (dispersão)."""
+"""Gráficos: as curvas de branco e de RNA e as medidas do pico de cada ensaio."""
 from __future__ import annotations
 
-import hashlib
-import threading
-from collections import OrderedDict
-
-import pandas as pd
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from fiep import db
-from fiep.config import load_config
-from fiep.graficos import dados
+from fiep import db, genossensor
 
 from ..deps import sessao, usuario_atual
+from ..modelo import registros
 
 r = APIRouter(prefix="/api", tags=["graficos"])
 
-_CACHE: OrderedDict = OrderedDict()
-_TRAVA = threading.Lock()
-
-
-def _versao_dados(s: Session) -> str:
-    """Impressão digital do que entra nos gráficos: muda quando entra/sai medição ou muda rótulo, carga,
-    etapa, réplica ou QC manual."""
-    df = db.sql(s, """SELECT m.measurement_id, m.sample_id, m.replicate_id, m.sensor_state, m.tecnica, m.qc_flag,
-                             a.contamination_status, a.sample_log10_mean_cfu_ml, a.empresa_id, c.n_pontos
-                      FROM medicoes m LEFT JOIN amostras a ON a.sample_id = m.sample_id
-                      LEFT JOIN curvas c ON c.measurement_id = m.measurement_id""")
-    if df.empty:
-        return "vazio"
-    return hashlib.sha1(pd.util.hash_pandas_object(df.astype(str), index=False).values.tobytes()).hexdigest()
+PONTOS = ["id", "arquivo", "eletrodo_id", "tipo", "concentracao", "e_pico_v", "i_pico_ua", "i_base_ua", "altura_ua",
+          "largura_v", "area_uav", "queda_pct", "abaixo_do_branco", "qc_flag"]
 
 
 @r.get("/graficos")
-def graficos(request: Request, empresa_id: int | None = None, protocolo: str | None = None,
-             qc: str = Query("aprovadas", pattern="^(aprovadas|todas)$"),
-             s: Session = Depends(sessao), _=Depends(usuario_atual)):
-    chave = (_versao_dados(s), empresa_id, protocolo, qc)
-    with _TRAVA:
-        out = _CACHE.get(chave)
-    if out is None:
-        ds = db.carregar(s, "empresa_id = ?", (empresa_id,)) if empresa_id else db.carregar(s)
-        cfg = load_config(request.app.state.config.config_pipeline)
-        out = dados(ds, cfg, protocolo=protocolo, so_aprovadas=qc == "aprovadas")
-        with _TRAVA:
-            _CACHE[chave] = out
-            while len(_CACHE) > 12:
-                _CACHE.popitem(last=False)
+def graficos(empresa_id: int | None = None, s: Session = Depends(sessao), _=Depends(usuario_atual)):
+    """Curvas (para o gráfico de linha) e uma linha por ensaio (para a dispersão)."""
+    df = genossensor.tabela(s, incluir_curvas=True, empresa_id=empresa_id)
     empresas = db.sql(s, "SELECT e.id, e.nome FROM empresas e WHERE EXISTS "
-                         "(SELECT 1 FROM amostras a WHERE a.empresa_id = e.id) ORDER BY e.nome").to_dict("records")
-    return {**out, "empresas": empresas}
+                         "(SELECT 1 FROM ensaios x WHERE x.empresa_id = e.id) ORDER BY e.nome").to_dict("records")
+    if df.empty:
+        return {"curvas": [], "pontos": [], "calibracao": None, "empresas": empresas}
+    curvas = [{"id": int(r.id), "arquivo": r.arquivo, "eletrodo_id": r.eletrodo_id, "tipo": r.tipo,
+               "concentracao": float(r.concentracao), "qc_flag": r.qc_flag if isinstance(r.qc_flag, str) else None,
+               "e": [round(float(x), 4) for x in r.potential_v], "i": [round(float(x), 4) for x in r.current_ua]}
+              for r in df.itertuples()]
+    return {"curvas": curvas, "pontos": registros(df[PONTOS]), "calibracao": genossensor.calibracao(df),
+            "empresas": empresas}

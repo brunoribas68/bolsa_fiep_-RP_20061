@@ -16,9 +16,7 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY pyproject.toml README.md alembic.ini ./
 COPY fiep ./fiep
-COPY configs ./configs
 COPY api ./api
-COPY dados/exemplo_case ./dados/exemplo_case
 COPY --from=web /web/dist ./web/dist
 RUN pip install --no-cache-dir ".[api]" && useradd -m fiep && mkdir -p dados modelos && chown -R fiep dados modelos
 USER fiep

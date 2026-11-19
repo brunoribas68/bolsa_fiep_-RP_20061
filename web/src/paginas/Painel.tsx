@@ -1,73 +1,68 @@
 import AddIcon from "@mui/icons-material/Add";
-import { Alert, Box, Button, Chip, Link as MuiLink, Skeleton, Stack, Table, TableBody, TableCell, TableHead, TableRow, Tooltip, Typography } from "@mui/material";
+import { Alert, Box, Button, Chip, LinearProgress, Link as MuiLink, Skeleton, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth";
-import { Cabecalho, Kpi, Secao } from "../componentes/comum";
-import { data, num, pct } from "../formato";
+import { Cabecalho, ChipTipo, Kpi, Secao } from "../componentes/comum";
+import { NomeAlgoritmo, NomeVariante, useCatalogo } from "../componentes/nomes";
+import { data, num } from "../formato";
 import { useCarregar } from "../usar";
-import { ComDica, dicaAlgoritmo, NomeVariante, separarModelo, useCatalogo } from "../componentes/nomes";
 
 interface PainelDados {
-  amostras: number; contaminadas: number; nao_contaminadas: number; sem_rotulo: number; medicoes: number;
-  replicas_completas: number; replicas: number; reprovadas_qc: number; empresas: number; coletas: number;
-  por_empresa: { empresa: string; contaminadas: number; nao_contaminadas: number; sem_rotulo: number }[];
-  coletas_recentes: { id: number; descricao: string | null; criado_em: string; n_amostras: number; empresa: string | null; criado_por: string | null }[];
-  modelo: { id: string; algoritmo: string; limiar: number; acuracia_teste: number | null; ab_teste: number | null; auc_teste: number | null; n_amostras: number } | null;
+  branco: number; rna: number; eletrodos: number; reprovados: number; empresas: number; coletas: number; min_por_classe: number;
+  por_concentracao: { tipo: "branco" | "rna"; concentracao: number; ensaios: number; eletrodos: number }[];
+  coletas_recentes: { id: number; descricao: string | null; criado_em: string; n_ensaios: number; empresa: string | null; criado_por: string | null }[];
+  modelo: { id: string; algoritmo: string; representacao: string; ab_referencia: number; referencia: string; confiavel: boolean;
+            criado_em: string; n_ensaios: number } | null;
 }
 
 const grade = (min: number) => ({ display: "grid", gap: 2, gridTemplateColumns: `repeat(auto-fit, minmax(min(${min}px, 100%), 1fr))` });
 
-function NomeModelo({ modelo }: { modelo: string }) {
-  const cat = useCatalogo();
-  const { alg, variante } = separarModelo(modelo);
-  const a = cat?.algoritmos.find(x => x.id === alg);
-  return (
-    <Box>
-      <ComDica dica={dicaAlgoritmo(alg, a)}>
-        <Typography fontWeight={600}>{a ? a.nome : alg}
-          {a && <Typography component="span" color="text.secondary" fontWeight={400}> · {a.ajuste}</Typography>}</Typography>
-      </ComDica>
-      {variante && <Stack direction="row" spacing={.75} alignItems="center">
-        <Typography variant="body2" color="text.secondary">com a representação</Typography><NomeVariante id={variante} cat={cat} /></Stack>}
-    </Box>
-  );
-}
-
 export default function Painel() {
   const { usuario, pode } = useAuth();
+  const cat = useCatalogo();
   const { dados: d, erro } = useCarregar<PainelDados>("/api/painel");
+  const maior = Math.max(1, ...(d?.por_concentracao || []).map(p => p.ensaios));
+  const falta = d ? Math.max(0, d.min_por_classe - d.branco) + Math.max(0, d.min_por_classe - d.rna) : 0;
   return (
     <>
-      <Cabecalho titulo={`Olá, ${usuario?.nome.split(" ")[0]}`} sub="Situação do banco de voltamogramas e do modelo em uso."
+      <Cabecalho titulo={`Olá, ${usuario?.nome.split(" ")[0]}`} sub="A base do genossensor (branco e RNA) e o modelo em uso."
                  acoes={pode("editar") && <Button variant="contained" startIcon={<AddIcon />} component={Link} to="/coletas/nova">Nova coleta</Button>} />
       {erro && <Alert severity="error">{erro}</Alert>}
       {!d && !erro && <Box sx={grade(200)}>{[0, 1, 2, 3].map(i => <Skeleton key={i} variant="rounded" height={110} />)}</Box>}
       {d && (
         <Stack spacing={2}>
           <Box sx={grade(200)}>
-            <Kpi rotulo="Amostras" valor={d.amostras} sub={`${d.empresas} empresas · ${d.coletas} coletas`} />
-            <Kpi rotulo="Contaminadas" valor={d.contaminadas} cor="error.main" sub={`${d.nao_contaminadas} não contaminadas`} />
-            <Kpi rotulo="Sem resultado de plaqueamento" valor={d.sem_rotulo} cor={d.sem_rotulo ? "warning.main" : undefined}
-                 sub={d.sem_rotulo ? <MuiLink component={Link} to="/amostras?rotulo=sem">completar rótulos</MuiLink> : "tudo rotulado"} />
-            <Kpi rotulo="Eletrodos completos" valor={d.replicas_completas}
-                 sub={`de ${d.replicas} · ${d.reprovadas_qc} medições reprovadas no QC`} />
+            <Kpi rotulo="Branco" valor={d.branco} sub="não contaminado" />
+            <Kpi rotulo="RNA" valor={d.rna} cor="error.main" sub="contaminado" />
+            <Kpi rotulo="Eletrodos" valor={d.eletrodos} sub={`${d.empresas} empresa(s) · ${d.coletas} coleta(s)`} />
+            <Kpi rotulo="Reprovados no QC" valor={d.reprovados} cor={d.reprovados ? "warning.main" : undefined}
+                 sub={<MuiLink component={Link} to="/ensaios">ver a base</MuiLink>} />
           </Box>
           <Box sx={grade(360)}>
             <Secao titulo="Modelo em uso" acoes={<Button size="small" component={Link} to="/modelos">detalhes e comparação</Button>}>
               {d.modelo ? (
-                <Stack spacing={1.5}>
-                  <NomeModelo modelo={d.modelo.algoritmo} />
+                <Stack spacing={1.25}>
+                  <NomeAlgoritmo id={d.modelo.algoritmo} cat={cat} linha />
+                  <Stack direction="row" spacing={.75} alignItems="center">
+                    <Typography variant="body2" color="text.secondary">com a representação</Typography>
+                    <NomeVariante id={d.modelo.representacao} cat={cat} />
+                  </Stack>
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                    <Chip label={`Acurácia ${pct(d.modelo.acuracia_teste, 1)}`} color="primary" />
-                    <Chip label={`Acurácia balanceada ${num(d.modelo.ab_teste, 3)}`} color="primary" variant="outlined" />
-                    <Chip label={`AUC ${num(d.modelo.auc_teste, 3)}`} variant="outlined" />
-                    <Chip label={`limiar ${pct(d.modelo.limiar)}`} variant="outlined" />
+                    <Chip label={`Acurácia balanceada ${num(d.modelo.ab_referencia, 3)}`} color={d.modelo.confiavel ? "primary" : "warning"} />
+                    <Chip label={d.modelo.referencia === "teste" ? "medida no teste" : "medida na validação cruzada"} variant="outlined" />
                   </Stack>
                   <Typography variant="body2" color="text.secondary">
-                    Medido no conjunto de teste · {d.modelo.n_amostras} amostras no treino · registro <code>{d.modelo.id}</code>
+                    {d.modelo.n_ensaios} curvas no treino · {data(d.modelo.criado_em, true)}
+                    {!d.modelo.confiavel && " · abaixo de 0,7: as previsões saem INCONCLUSIVO"}
                   </Typography>
                 </Stack>
-              ) : <Alert severity="info">Nenhum modelo treinado ainda. Rode <code>fiep experimento --db dados/fiep.db</code>.</Alert>}
+              ) : falta > 0 ? (
+                <Stack spacing={1}>
+                  <Alert severity="info">Para treinar, faltam {Math.max(0, d.min_por_classe - d.branco)} branco(s) e{" "}
+                    {Math.max(0, d.min_por_classe - d.rna)} RNA (mínimo de {d.min_por_classe} de cada).</Alert>
+                  <LinearProgress variant="determinate" value={100 * (Math.min(d.branco, d.min_por_classe) + Math.min(d.rna, d.min_por_classe)) / (2 * d.min_por_classe)} />
+                </Stack>
+              ) : <Alert severity="info">Há dados para treinar: use “Treinar modelos” em <MuiLink component={Link} to="/modelos">Modelos</MuiLink>.</Alert>}
             </Secao>
             <Secao titulo="Coletas recentes" acoes={<Button size="small" component={Link} to="/coletas">ver todas</Button>}>
               {d.coletas_recentes.length ? (
@@ -76,42 +71,32 @@ export default function Painel() {
                     <TableRow key={c.id} hover>
                       <TableCell sx={{ pl: 0 }}>
                         <MuiLink component={Link} to={`/coletas/${c.id}`} fontWeight={550}>{c.descricao || `Coleta #${c.id}`}</MuiLink>
-                        <Typography variant="body2" color="text.secondary">{c.empresa || "sem empresa"} · {c.criado_por || "importação"}</Typography>
+                        <Typography variant="body2" color="text.secondary">{c.empresa || "sem empresa"} · {c.criado_por || "linha de comando"}</Typography>
                       </TableCell>
-                      <TableCell align="right">{c.n_amostras} amostras</TableCell>
+                      <TableCell align="right">{c.n_ensaios} ensaios</TableCell>
                       <TableCell align="right" sx={{ color: "text.secondary", pr: 0 }}>{data(c.criado_em)}</TableCell>
                     </TableRow>))}
                 </TableBody></Table>
               ) : <Typography color="text.secondary">Nenhuma coleta ainda.</Typography>}
             </Secao>
           </Box>
-          <Secao titulo="Amostras por empresa">
+          <Secao titulo="Ensaios por concentração">
             <Box sx={{ overflowX: "auto" }}>
               <Table size="small">
-                <TableHead><TableRow><TableCell>Empresa</TableCell><TableCell align="right">Contaminadas</TableCell>
-                  <TableCell align="right">Não contaminadas</TableCell><TableCell align="right">Sem resultado</TableCell>
-                  <TableCell sx={{ width: "34%" }}>Distribuição</TableCell></TableRow></TableHead>
-                <TableBody>{d.por_empresa.map(e => {
-                  const t = e.contaminadas + e.nao_contaminadas + e.sem_rotulo || 1;
-                  return (
-                    <TableRow key={e.empresa} hover>
-                      <TableCell>{e.empresa}</TableCell><TableCell align="right">{e.contaminadas}</TableCell>
-                      <TableCell align="right">{e.nao_contaminadas}</TableCell><TableCell align="right">{e.sem_rotulo}</TableCell>
-                      <TableCell>
-                        <Tooltip title={`${e.contaminadas} contaminadas · ${e.nao_contaminadas} não contaminadas · ${e.sem_rotulo} sem resultado`}>
-                          <Stack direction="row" spacing={.25} sx={{ height: 8 }}>
-                            <Box sx={{ flex: e.contaminadas / t, bgcolor: "error.main", borderRadius: 1 }} />
-                            <Box sx={{ flex: e.nao_contaminadas / t, bgcolor: "success.main", borderRadius: 1 }} />
-                            <Box sx={{ flex: e.sem_rotulo / t, bgcolor: "divider", borderRadius: 1 }} />
-                          </Stack>
-                        </Tooltip>
-                      </TableCell>
-                    </TableRow>);
-                })}
-                {!d.por_empresa.length && <TableRow><TableCell colSpan={5} align="center" sx={{ color: "text.secondary", py: 3 }}>Sem amostras.</TableCell></TableRow>}
+                <TableHead><TableRow><TableCell>Tipo</TableCell><TableCell align="right">Ensaios</TableCell>
+                  <TableCell align="right">Eletrodos</TableCell><TableCell sx={{ width: "45%" }} /></TableRow></TableHead>
+                <TableBody>{d.por_concentracao.map(p => (
+                  <TableRow key={`${p.tipo}${p.concentracao}`} hover>
+                    <TableCell><ChipTipo tipo={p.tipo} conc={p.concentracao} /></TableCell>
+                    <TableCell align="right">{p.ensaios}</TableCell><TableCell align="right">{p.eletrodos}</TableCell>
+                    <TableCell><Box sx={{ height: 8, width: `${100 * p.ensaios / maior}%`, borderRadius: 1,
+                                          bgcolor: p.tipo === "branco" ? "text.secondary" : "error.main", opacity: .7 }} /></TableCell>
+                  </TableRow>))}
+                {!d.por_concentracao.length && <TableRow><TableCell colSpan={4} align="center" sx={{ color: "text.secondary", py: 3 }}>Sem ensaios.</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </Box>
+            <Typography variant="caption" color="text.secondary">Repetições em eletrodos diferentes valem mais que muitas medidas do mesmo eletrodo.</Typography>
           </Secao>
         </Stack>
       )}

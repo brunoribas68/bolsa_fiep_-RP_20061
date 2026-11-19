@@ -18,12 +18,6 @@ export function useCatalogo() {
   return cat;
 }
 
-/** "log_reg_l1 [dif_curva]" -> { alg: "log_reg_l1", variante: "dif_curva" } */
-export function separarModelo(s: string | null | undefined) {
-  const m = /^(.*?)\s*\[(.+)\]\s*$/.exec(s || "");
-  return m ? { alg: m[1], variante: m[2] } : { alg: s || "", variante: null as string | null };
-}
-
 function Explicacao({ titulo, sub, familia, linhas, codigo }: {
   titulo: string; sub?: string; familia?: string; linhas: [string, string | undefined][]; codigo: string;
 }) {
@@ -64,7 +58,7 @@ export function dicaAlgoritmo(id: string, a: InfoAlgoritmo | undefined) {
 
 /** Nome legível do algoritmo, a variação embaixo e a explicação no tooltip. */
 export function NomeAlgoritmo({ id, cat, linha = false }: { id: string; cat: Catalogo | null; linha?: boolean }) {
-  const a = cat?.algoritmos.find(x => x.id === id) || cat?.regressores?.find(x => x.id === id);
+  const a = cat?.algoritmos.find(x => x.id === id);
   return (
     <ComDica dica={dicaAlgoritmo(id, a)}>
       <Box component="span" sx={{ minWidth: 0 }}>
@@ -83,16 +77,8 @@ export function NomeVariante({ id, cat }: { id: string | null; cat: Catalogo | n
   if (!id) return <>—</>;
   const v: InfoVariante | undefined = cat?.variantes.find(x => x.id === id);
   return (
-    <ComDica dica={<Explicacao titulo={v?.nome || id} codigo={id} linhas={[["O que entra no modelo", v?.o_que]]} />}>
+    <ComDica dica={<Explicacao titulo={v?.nome || id} codigo={id} linhas={[["O que o modelo vê da curva", v?.o_que]]} />}>
       <Typography component="span" variant="body2" sx={{ lineHeight: 1.3 }}>{v?.nome || id}</Typography>
     </ComDica>
   );
-}
-
-/** Texto simples (sem tooltip), para títulos e mensagens. */
-export function textoModelo(s: string | null | undefined, cat: Catalogo | null) {
-  const { alg, variante } = separarModelo(s);
-  const a = cat?.algoritmos.find(x => x.id === alg);
-  const v = cat?.variantes.find(x => x.id === variante);
-  return [a ? `${a.nome} — ${a.ajuste}` : alg, variante ? (v?.nome || variante) : null].filter(Boolean).join(" · ");
 }

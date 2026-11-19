@@ -16,12 +16,11 @@ import {
 import { useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
-import Amostras from "./paginas/Amostras";
-import AmostraDetalhe from "./paginas/AmostraDetalhe";
 import ColetaDetalhe from "./paginas/ColetaDetalhe";
 import Coletas from "./paginas/Coletas";
 import Conta from "./paginas/Conta";
 import Empresas from "./paginas/Empresas";
+import Ensaios from "./paginas/Ensaios";
 import Graficos from "./paginas/Graficos";
 import Login from "./paginas/Login";
 import Modelos from "./paginas/Modelos";
@@ -48,10 +47,10 @@ function Menu({ aoNavegar }: { aoNavegar?: () => void }) {
   const itens = [
     { para: "/", nome: "Painel", Ic: DashboardOutlined },
     { para: "/coletas", nome: "Coletas", Ic: CloudUploadOutlined },
-    { para: "/amostras", nome: "Amostras", Ic: ScienceOutlined },
+    { para: "/ensaios", nome: "Ensaios", Ic: ScienceOutlined },
     { para: "/graficos", nome: "Gráficos", Ic: ScatterPlotOutlined },
     { para: "/modelos", nome: "Modelos", Ic: InsightsOutlined },
-    { para: "/prever", nome: "Previsão rápida", Ic: ShowChart },
+    { para: "/prever", nome: "Previsão", Ic: ShowChart },
     { para: "/empresas", nome: "Empresas", Ic: BusinessOutlined },
     ...(pode("admin") ? [{ para: "/usuarios", nome: "Usuários", Ic: GroupOutlined }] : []),
   ];
@@ -62,7 +61,7 @@ function Menu({ aoNavegar }: { aoNavegar?: () => void }) {
         <Marca />
         <Box sx={{ color: "text.primary" }}>
           <Typography fontWeight={700} lineHeight={1.2}>FIEP</Typography>
-          <Typography variant="caption" color="text.secondary">Voltametria · contaminação</Typography>
+          <Typography variant="caption" color="text.secondary">Genossensor · RNA</Typography>
         </Box>
       </Stack>
       <List sx={{ px: 1.5, flex: 1 }}>
@@ -127,8 +126,7 @@ export default function App() {
           <Route path="/coletas" element={<Coletas />} />
           <Route path="/coletas/nova" element={pode("editar") ? <NovaColeta /> : <Navigate to="/coletas" />} />
           <Route path="/coletas/:id" element={<ColetaDetalhe />} />
-          <Route path="/amostras" element={<Amostras />} />
-          <Route path="/amostras/:id" element={<AmostraDetalhe />} />
+          <Route path="/ensaios" element={<Ensaios />} />
           <Route path="/prever" element={<Prever />} />
           <Route path="/graficos" element={<Graficos />} />
           <Route path="/modelos" element={<Modelos />} />

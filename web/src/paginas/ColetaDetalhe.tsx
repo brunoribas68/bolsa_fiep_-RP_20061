@@ -1,6 +1,5 @@
 import DeleteOutline from "@mui/icons-material/DeleteOutline";
-import InsertDriveFileOutlined from "@mui/icons-material/InsertDriveFileOutlined";
-import { Alert, AlertTitle, Box, Button, Chip, Skeleton, Stack } from "@mui/material";
+import { Alert, AlertTitle, Box, Button, Skeleton, Stack } from "@mui/material";
 import { useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
@@ -8,9 +7,9 @@ import { useAuth } from "../auth";
 import { useAvisos } from "../componentes/avisos";
 import { Cabecalho, Kpi, Secao } from "../componentes/comum";
 import Confirmar from "../componentes/Confirmar";
-import TabelaAmostras from "../componentes/TabelaAmostras";
+import TabelaEnsaios from "../componentes/TabelaEnsaios";
 import { data } from "../formato";
-import { NOME_CONJUNTO, type AmostraLinha, type Coleta } from "../tipos";
+import type { Coleta } from "../tipos";
 import { useCarregar } from "../usar";
 
 export default function ColetaDetalhe() {
@@ -20,8 +19,8 @@ export default function ColetaDetalhe() {
   const avisar = useAvisos();
   const { pode } = useAuth();
   const [confirmar, setConfirmar] = useState(false);
-  const { dados: c, erro } = useCarregar<Coleta>(`/api/coletas/${id}`);
-  const am = useCarregar<{ total: number; itens: AmostraLinha[] }>(`/api/amostras?coleta_id=${id}&por_pagina=200`);
+  const { dados: c, erro, recarregar } = useCarregar<Coleta>(`/api/coletas/${id}`);
+  const estado = local.state as { criada?: boolean; importacao?: Coleta["importacao"] } | null;
 
   async function apagar() {
     setConfirmar(false);
@@ -31,47 +30,42 @@ export default function ColetaDetalhe() {
 
   if (erro) return <Alert severity="error">{erro}</Alert>;
   if (!c) return <Skeleton variant="rounded" height={300} />;
-  const incompletas = (c.replicas || []).filter(r => r.n_aprovadas < 3);
+  const contra = (c.ensaios || []).filter(e => e.abaixo_do_branco === false);
+  const semBranco = (c.ensaios || []).filter(e => e.tipo === "rna" && e.branco_id === null);
   return (
     <>
       <Cabecalho titulo={c.descricao || `Coleta #${c.id}`}
-                 sub={`${c.empresa || "Sem empresa"} · ${data(c.data_coleta || c.criado_em)} · enviada por ${c.criado_por || "importação"} em ${data(c.criado_em, true)}`}
+                 sub={`${c.empresa || "Sem empresa"} · ${data(c.data_coleta || c.criado_em)} · enviada por ${c.criado_por || "linha de comando"} em ${data(c.criado_em, true)}`}
                  acoes={pode("admin") && <Button color="error" variant="outlined" startIcon={<DeleteOutline />} onClick={() => setConfirmar(true)}>Apagar coleta</Button>} />
       <Stack spacing={2}>
-        {(local.state as { criada?: boolean })?.criada && (
-          <Alert severity="success">Coleta recebida: {c.n_amostras} amostras e {c.n_medicoes} medições gravadas no banco.</Alert>)}
+        {estado?.criada && estado.importacao && (
+          <Alert severity="success">
+            {estado.importacao.gravados} ensaio(s) gravado(s) de {estado.importacao.lidos} arquivo(s)
+            {estado.importacao.ja_no_banco ? ` · ${estado.importacao.ja_no_banco} já estava(m) na base` : ""}
+            {estado.importacao.nao_gravados ? ` · ${estado.importacao.nao_gravados} não gravado(s) (veja os avisos)` : ""}
+            {` · ${estado.importacao.ligados_ao_branco} RNA ligado(s) ao branco do eletrodo.`}
+          </Alert>)}
         <Box sx={{ display: "grid", gap: 2, gridTemplateColumns: "repeat(auto-fit, minmax(min(180px, 100%), 1fr))" }}>
-          <Kpi rotulo="Amostras" valor={c.n_amostras} />
-          <Kpi rotulo="Medições" valor={c.n_medicoes} />
-          <Kpi rotulo="Sem resultado" valor={c.amostras_sem_rotulo} cor={c.amostras_sem_rotulo ? "warning.main" : undefined} />
-          <Kpi rotulo="Uso no treino" valor={<Box component="span" sx={{ fontSize: 18 }}>{NOME_CONJUNTO[c.conjunto || ""]}</Box>} />
+          <Kpi rotulo="Ensaios" valor={c.n_ensaios} />
+          <Kpi rotulo="Branco" valor={c.n_branco} sub="não contaminado" />
+          <Kpi rotulo="RNA" valor={c.n_rna} sub="contaminado" cor="error.main" />
         </Box>
-        {(c.avisos.length > 0 || incompletas.length > 0) && (
+        {(c.avisos.length > 0 || contra.length > 0 || semBranco.length > 0) && (
           <Alert severity="warning"><AlertTitle>Atenção</AlertTitle>
             <Box component="ul" sx={{ m: 0, pl: 2 }}>
-              {incompletas.slice(0, 8).map(r => (
-                <li key={`${r.sample_id}-${r.replicate_id}`}>{r.sample_id}, eletrodo {r.replicate_id}: {r.n_aprovadas} de 3 etapas aprovadas ({r.estagios || "nenhuma"})</li>))}
-              {incompletas.length > 8 && <li>… e mais {incompletas.length - 8} eletrodos incompletos</li>}
-              {c.avisos.slice(0, 8).map(a => <li key={a}>{a}</li>)}
+              {contra.map(e => <li key={`c${e.id}`}>{e.arquivo}: pico acima do branco do eletrodo {e.eletrodo_id} (o contrário do esperado)</li>)}
+              {semBranco.length > 0 && <li>{semBranco.length} RNA sem branco do mesmo eletrodo: {semBranco.slice(0, 6).map(e => e.arquivo).join(", ")}</li>}
+              {c.avisos.slice(0, 12).map(a => <li key={a}>{a}</li>)}
+              {c.avisos.length > 12 && <li>… e mais {c.avisos.length - 12}</li>}
             </Box>
           </Alert>
         )}
-        <Secao titulo="Amostras">
-          {am.dados ? <TabelaAmostras itens={am.dados.itens} mostrarEmpresa={false}
-            aoMudar={n => am.setDados(d => d && { ...d, itens: d.itens.map(x => (x.sample_id === n.sample_id ? n : x)) })} />
-            : <Skeleton variant="rounded" height={120} />}
+        <Secao titulo="Ensaios desta coleta">
+          <TabelaEnsaios itens={c.ensaios || []} aoMudar={recarregar} />
         </Secao>
-        {c.arquivos && c.arquivos.length > 0 && (
-          <Secao titulo={`Arquivos recebidos (${c.arquivos.length})`}>
-            <Stack direction="row" spacing={.75} flexWrap="wrap" useFlexGap>
-              {c.arquivos.map(a => <Chip key={a.sha256} size="small" variant="outlined" icon={<InsertDriveFileOutlined />}
-                                         label={a.arquivo} title={`SHA-256 ${a.sha256}…`} sx={{ fontFamily: "monospace" }} />)}
-            </Stack>
-          </Secao>
-        )}
       </Stack>
       <Confirmar aberto={confirmar} perigo titulo="Apagar coleta?" acao="Apagar" aoFechar={() => setConfirmar(false)} aoConfirmar={apagar}
-                 texto={`A coleta "${c.descricao || c.id}" e as ${c.n_amostras} amostras dela serão apagadas. Isto não pode ser desfeito.`} />
+                 texto={`A coleta "${c.descricao || c.id}" e os ${c.n_ensaios} ensaios dela saem da base. Isto não pode ser desfeito.`} />
     </>
   );
 }

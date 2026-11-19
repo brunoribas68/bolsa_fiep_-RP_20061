@@ -19,18 +19,6 @@ venv/
 *.nox
 dados/*
 !dados/README.md
-!dados/exemplo_case/
-!dados/treino/
-!dados/validacao/
-!dados/teste/
-dados/treino/*
-dados/validacao/*
-dados/teste/*
-!dados/treino/.gitkeep
-!dados/validacao/.gitkeep
-!dados/teste/.gitkeep
-!dados/treino/LEIA-ME.md
-!dados/validacao/LEIA-ME.md
 *.db
 *.db-wal
 *.db-shm
@@ -38,10 +26,7 @@ dados/teste/*
 # Saídas geradas (regeneráveis)
 modelos/
 resultados/
-mlruns/
-mlartifacts/
 *.joblib
-nova_coleta/
 
 # Artigo: arquivos auxiliares do LaTeX
 artigo/*.aux

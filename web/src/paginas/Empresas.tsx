@@ -43,11 +43,11 @@ export default function Empresas() {
       <Card><Box sx={{ overflowX: "auto" }}>
         <Table size="small">
           <TableHead><TableRow><TableCell>Empresa</TableCell><TableCell>Cidade</TableCell><TableCell>Segmento</TableCell>
-            <TableCell align="right">Coletas</TableCell><TableCell align="right">Amostras</TableCell><TableCell /></TableRow></TableHead>
+            <TableCell align="right">Coletas</TableCell><TableCell align="right">Ensaios</TableCell><TableCell /></TableRow></TableHead>
           <TableBody>{dados?.map(e => (
             <TableRow key={e.id} hover><TableCell sx={{ fontWeight: 550 }}>{e.nome}</TableCell><TableCell>{e.cidade || "—"}</TableCell>
               <TableCell>{e.segmento || "—"}</TableCell><TableCell align="right">{e.n_coletas}</TableCell>
-              <TableCell align="right"><MuiLink component={Link} to={`/amostras?empresa_id=${e.id}`}>{e.n_amostras}</MuiLink></TableCell>
+              <TableCell align="right"><MuiLink component={Link} to={`/ensaios?empresa_id=${e.id}`}>{e.n_ensaios}</MuiLink></TableCell>
               <TableCell align="right">{pode("editar") && <Tooltip title="Editar"><IconButton size="small" onClick={() => abrir(e)}><EditOutlined fontSize="small" /></IconButton></Tooltip>}</TableCell></TableRow>))}
             {dados && !dados.length && <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4, color: "text.secondary" }}>Nenhuma empresa cadastrada.</TableCell></TableRow>}
           </TableBody>

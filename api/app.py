@@ -25,7 +25,7 @@ from fiep.orm import Usuario, fabrica_sessoes, migrar
 
 from .config import Config
 from .modelo import ModeloAtual
-from .rotas import amostras, auth, coletas, empresas, graficos, modelos, painel, previsao
+from .rotas import auth, coletas, empresas, ensaios, graficos, modelos, painel, previsao
 from .rotas import usuarios as rotas_usuarios
 from .seguranca import CABECALHO_CSRF, LimiteTentativas
 
@@ -53,18 +53,18 @@ def criar_app(cfg: Config | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def ciclo(app: FastAPI):
-        migrar(cfg.db_url, dados_exemplo=cfg.dados_exemplo)
+        migrar(cfg.db_url)
         _primeiro_admin(cfg, app.state.sessoes)
         yield
 
     app = FastAPI(title="Plataforma FIEP", version=__version__, lifespan=ciclo,
-                  description="Coletas de voltamogramas, banco de amostras e previsão de contaminação.")
+                  description="Ensaios do genossensor (branco e RNA), modelos pela curva e previsão de contaminação.")
     app.state.config = cfg
     app.state.sessoes = fabrica_sessoes(cfg.db_url)
     app.state.limite = LimiteTentativas()
-    app.state.modelo = ModeloAtual(cfg.modelos, cfg.config_pipeline)
+    app.state.modelo = ModeloAtual(cfg.modelos)
     from .treinos import Treinos
-    app.state.treinos = Treinos(cfg.resultados, cfg.modelos, app.state.sessoes, cfg.config_pipeline)
+    app.state.treinos = Treinos(cfg.modelos, app.state.sessoes)
     from fastapi.middleware.gzip import GZipMiddleware
     app.add_middleware(GZipMiddleware, minimum_size=2000)     # respostas grandes (gráficos, curvas)
 
@@ -87,7 +87,7 @@ def criar_app(cfg: Config | None = None) -> FastAPI:
             resp.headers.setdefault("Cache-Control", "no-store")
         return resp
 
-    for m in (auth, rotas_usuarios, empresas, coletas, amostras, previsao, painel, modelos, graficos):
+    for m in (auth, rotas_usuarios, empresas, coletas, ensaios, previsao, painel, modelos, graficos):
         app.include_router(m.r)
 
     if WEB.exists():

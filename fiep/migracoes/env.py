@@ -13,14 +13,9 @@ config.set_main_option("sqlalchemy.url", url_banco(url))
 alvo = Base.metadata
 
 
-def _sem_views(obj, nome, tipo, refletido, comparado):
-    # views (v_*) são criadas por SQL nas migrations; o autogenerate não deve tentar apagá-las
-    return not (tipo == "table" and str(nome).startswith("v_"))
-
-
 def offline():
     context.configure(url=config.get_main_option("sqlalchemy.url"), target_metadata=alvo, literal_binds=True,
-                      render_as_batch=True, include_object=_sem_views)
+                      render_as_batch=True)
     with context.begin_transaction():
         context.run_migrations()
 
@@ -30,7 +25,7 @@ def online():
                              poolclass=pool.NullPool)
     with eng.connect() as con:
         # render_as_batch: ALTER TABLE no SQLite (recria a tabela por baixo dos panos)
-        context.configure(connection=con, target_metadata=alvo, render_as_batch=True, include_object=_sem_views,
+        context.configure(connection=con, target_metadata=alvo, render_as_batch=True,
                           compare_type=True)
         with context.begin_transaction():
             context.run_migrations()

@@ -1,6 +1,6 @@
 import { alpha, Alert, Box, Card, CardContent, Chip, LinearProgress, Stack, Typography, type ChipProps } from "@mui/material";
 import type { ReactNode } from "react";
-import { pct } from "../formato";
+import { num, pct } from "../formato";
 
 export function Cabecalho({ titulo, sub, acoes }: { titulo: ReactNode; sub?: ReactNode; acoes?: ReactNode }) {
   return (
@@ -46,10 +46,9 @@ export function Kpi({ rotulo, valor, sub, cor }: { rotulo: string; valor: ReactN
 }
 
 const CHIP_RESULTADO: Record<string, { cor: ChipProps["color"]; texto: string }> = {
-  "CONTAMINADA": { cor: "error", texto: "Contaminada" },
-  "NÃO CONTAMINADA": { cor: "success", texto: "Não contaminada" },
+  "CONTAMINADO": { cor: "error", texto: "Contaminado" },
+  "NÃO CONTAMINADO": { cor: "success", texto: "Não contaminado" },
   "REPETIR MEDIÇÃO": { cor: "warning", texto: "Repetir medição" },
-  "SEM PREVISÃO": { cor: "default", texto: "Sem previsão" },
   "INCONCLUSIVO": { cor: "warning", texto: "Inconclusivo" },
 };
 
@@ -60,16 +59,22 @@ export function ChipResultado({ r, size = "small" }: { r: string | null | undefi
                sx={c.cor !== "default" ? { bgcolor: t => alpha(t.palette[c.cor as "error"].main, .14), color: `${c.cor}.main` } : undefined} />;
 }
 
-export function ChipRotulo({ v }: { v: number | null }) {
-  return <ChipResultado r={v === 1 ? "CONTAMINADA" : v === 0 ? "NÃO CONTAMINADA" : "SEM PREVISÃO"} />;
+/** Branco (não contaminado) ou RNA com a concentração (contaminado). */
+export function ChipTipo({ tipo, conc }: { tipo: string | null | undefined; conc?: number | null }) {
+  if (tipo !== "branco" && tipo !== "rna") return <Typography color="text.secondary">—</Typography>;
+  return tipo === "branco"
+    ? <Chip size="small" variant="outlined" label="Branco" sx={{ height: 22 }} />
+    : <Chip size="small" label={conc ? `RNA ${num(conc, conc < 1 ? 2 : 1)} ng/mL` : "RNA"}
+            sx={{ height: 22, bgcolor: t => alpha(t.palette.error.main, .12), color: "error.main" }} />;
 }
 
 export function SeloQC({ v }: { v: string | null }) {
-  const cor = v === "PASS" ? "success" : v === "FAIL" ? "error" : v === "REVIEW" ? "warning" : "default";
-  return <Chip size="small" label={v || "—"} color={cor} variant="outlined" sx={{ height: 22, fontSize: 11.5 }} />;
+  if (!v) return <Typography variant="body2" color="text.disabled">—</Typography>;
+  return <Chip size="small" label={v === "FAIL" ? "reprovado" : "aprovado"} color={v === "FAIL" ? "error" : "success"}
+               variant="outlined" sx={{ height: 22, fontSize: 11.5 }} />;
 }
 
-export function BarraProb({ p, limiar }: { p: number | null; limiar: number }) {
+export function BarraProb({ p, limiar = 0.5 }: { p: number | null | undefined; limiar?: number }) {
   if (p === null || p === undefined) return <Typography color="text.secondary">—</Typography>;
   return (
     <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 150 }} title={`limiar ${pct(limiar)}`}>
