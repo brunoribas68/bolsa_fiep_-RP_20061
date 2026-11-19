@@ -15,7 +15,6 @@ Banco padrão: SQLite em `dados/fiep.db`; para Postgres, defina `FIEP_DB_URL`
 """
 from __future__ import annotations
 
-import logging
 import os
 from pathlib import Path
 
@@ -34,7 +33,6 @@ __all__ = ["Base", "Usuario", "Empresa", "Coleta", "Arquivo", "Amostra", "Plaque
            "ResultadoQC", "ModeloML", "Predicao", "Ensaio", "url_banco", "criar_engine", "fabrica_sessoes", "migrar"]
 
 BANCO_PADRAO = "dados/fiep.db"
-log = logging.getLogger(__name__)
 
 
 def url_banco(caminho_ou_url: str | Path | None = None) -> str:
@@ -74,36 +72,25 @@ def migrar(caminho_ou_url: str | Path | None = None, dados_exemplo: bool = True,
     cfg.set_main_option("script_location", str(Path(__file__).resolve().parent.parent / "migracoes"))
     cfg.set_main_option("sqlalchemy.url", url_banco(caminho_ou_url))
     url = url_banco(caminho_ou_url)
-    antigo = None
     if url.startswith("sqlite:///"):
-        from .. import legado
         arquivo = Path(url[len("sqlite:///"):])
-        if legado.eh_antigo(arquivo):
-            # banco da versão anterior (sem migrations): guarda uma cópia e converte
-            if url in _engines:
-                _engines.pop(url).dispose()          # solta o arquivo (no Windows não renomeia aberto)
-            antigo = legado.nome_backup(arquivo)
-            arquivo.replace(antigo)
-            for extra in ("-wal", "-shm"):
-                f = arquivo.with_name(arquivo.name + extra)
-                if f.exists():
-                    f.replace(antigo.with_name(antigo.name + extra))
-            dados_exemplo = False                    # o banco já tinha dados: não mistura o exemplo
-            log.warning("Banco antigo encontrado: cópia em %s; convertendo para o formato novo.", antigo)
-        elif "alembic_version" not in legado.tabelas(arquivo) and legado.tabelas(arquivo) - {"sqlite_sequence"}:
+        existentes = _tabelas_sqlite(arquivo)
+        if "alembic_version" not in existentes and existentes - {"sqlite_sequence"}:
             raise RuntimeError(f"{arquivo} tem tabelas, mas não é um banco da plataforma FIEP. "
                                "Use outro caminho (--db) ou mova esse arquivo.")
     cfg.attributes["dados_exemplo"] = dados_exemplo
     command.upgrade(cfg, revisao)
-    if antigo is not None:
-        from .. import legado
-        s = fabrica_sessoes(caminho_ou_url)()
-        try:
-            r = legado.converter(antigo, s)
-        finally:
-            s.close()
-        log.warning("Conversão concluída: %s medições, %s modelos, %s previsões. O arquivo antigo ficou em %s.",
-                    r["medicoes"], r["modelos"], r["previsoes"], antigo)
+
+
+def _tabelas_sqlite(arquivo: Path) -> set[str]:
+    if not arquivo.exists() or arquivo.stat().st_size == 0:
+        return set()
+    import sqlite3
+    con = sqlite3.connect(arquivo)
+    try:
+        return {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    finally:
+        con.close()
 
 
 def fabrica_sessoes(caminho_ou_url: str | Path | None = None) -> sessionmaker[Session]:

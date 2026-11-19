@@ -65,7 +65,7 @@ fiep verificar
 | `fiep` não é reconhecido | O `.venv` não está ativo: `.venv\Scripts\Activate.ps1` (no PowerShell pode ser preciso `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` uma vez). |
 | `No module named 'fastapi'` / `jwt` | Faltou o extra da plataforma: `python -m pip install -e ".[api]"`. |
 | A página diz "Frontend não compilado" | `cd web`, `npm install`, `npm run build`. |
-| `table ... already exists` | Banco criado por uma versão antiga: atualize (`git pull`); o banco antigo é convertido sozinho e guardado como `dados/fiep.antigo-<data>.db`. |
+| `... não é um banco da plataforma FIEP` | O arquivo em `--db` (ou `dados/fiep.db`) não foi criado pela plataforma, ou é da versão antiga sem migrations (a conversão automática foi removida): mova o arquivo ou recrie com `fiep db zerar`. |
 | Não consigo entrar (senha não aceita) | `fiep usuario listar` mostra se a conta existe; `fiep usuario senha --email voce@...` define uma senha nova; sem conta, `fiep usuario criar --email ... --papel admin`. Depois de 5 tentativas erradas o login fica bloqueado por 15 min (ou reinicie o `fiep servir`). O `fiep db zerar` mantém contas e senhas; pare a plataforma antes de zerar e reinicie depois. |
 | A tela não mostra o que mudou (ex.: nomes dos algoritmos ainda como `log_reg_C0.1`) | A tela é compilada. O `fiep servir` agora percebe quando ela está desatualizada e compila sozinho (precisa do Node.js); se a compilação falhar, ele mostra o erro. Manualmente: `cd web`, `npm install`, `npm run build`. `fiep verificar` também avisa. |
 | Depois do `git pull` algo quebrou | Reinstale (`python -m pip install -e ".[api,dev]"`) e recompile o frontend (`cd web && npm install && npm run build`). |
@@ -382,7 +382,7 @@ fiep/                   pacote: pipeline, banco e linha de comando
   genossensor.py          base do genossensor (RNA): leitura, pico, ligação ao branco, treino e calibração
   graficos.py             dados da tela Gráficos (curvas médias e descritores por eletrodo)
   orm/, migracoes/        modelo do banco e migrations
-  db.py, legado.py        funções do banco; conversão do banco antigo
+  db.py                   funções do banco
   usuarios.py             contas (bcrypt)
   cli.py                  comando `fiep`
 api/                    backend FastAPI (login, coletas, amostras, previsão, gráficos, modelos e treinos) + Dockerfile
