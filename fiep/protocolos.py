@@ -66,10 +66,6 @@ def estagio(texto: str, cfg: dict | None = None) -> str | None:
     return None
 
 
-def de_estagio(est: str, cfg: dict | None = None) -> str | None:
-    return next((k for k, p in todos(cfg).items() if est in p["estagios"]), None)
-
-
 def detectar(medicoes: pd.DataFrame, cfg: dict | None = None) -> str | None:
     """Protocolo com mais medições nos dados (pelos estágios presentes)."""
     if medicoes is None or "sensor_state" not in medicoes or medicoes["sensor_state"].isna().all():

@@ -161,7 +161,6 @@ def read_nox(path, incluir_brutos=False):
         if not g['cols']:
             continue
         aids = {aid for aid, _ in g['cols'].values()}
-        n = max(len(v) for _, v in g['cols'].values())
         destino = next((d for d, ids in ids_por_tabela.items() if aids & ids), None)
         if destino is None:
             g['orig'] = set(g['cols']); tabelas[pid] = g; ids_por_tabela[pid] = set(aids)
@@ -183,7 +182,6 @@ def read_nox(path, incluir_brutos=False):
         if not novos:
             continue
         if destino is not None:
-            n = max(len(v) for _, v in tabelas[destino]['cols'].values())
             for k, v in novos.items():
                 tabelas[destino]['cols'].setdefault(f'{g["nome"]}: {k}', v)
                 ids_por_tabela[destino].add(v[0])

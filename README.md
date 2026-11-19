@@ -338,7 +338,9 @@ e `fiep db migrar`. Detalhes e consultas úteis: [`docs/BANCO.md`](docs/BANCO.md
 
 - **Notebook**: `jupyter notebook notebook/fiep.ipynb` (instale o extra `notebook`). Usa os dados de
   `dados/` (ou o case de exemplo), reaproveita o último experimento feito com os mesmos dados
-  (`REFAZER = True` para rodar de novo).
+  (`REFAZER = True` para rodar de novo). A **seção 7** é a base do genossensor (RNA): importa
+  `dados/rna/` (pastas `contaminado/` e `nao_contaminado/`), mostra as curvas branco × RNA de cada
+  eletrodo, a queda do pico por concentração e o resultado de `fiep rna treinar`.
 - **Artigo**: `fiep experimento --artigo` atualiza `artigo/gerado/`; compile com
   `cd artigo && latexmk -pdf main.tex`. Trechos a completar pelo laboratório aparecem em vermelho
   (`\preencher{...}`). Ver [`artigo/README.md`](artigo/README.md).

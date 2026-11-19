@@ -145,11 +145,6 @@ def _experimento(a):
         print(f"Figuras e tabelas copiadas para {destino}/")
 
 
-def _tem_dados(pasta) -> bool:
-    p = Path(pasta)
-    return p.exists() and any(x.suffix.lower() in {".nox", ".csv", ".xlsx"} for x in p.rglob("*"))
-
-
 def estado_frontend(raiz: Path) -> str:
     """'ok', 'ausente' (nunca compilado) ou 'desatualizado' (código da tela mais novo que a compilação)."""
     web = raiz / "web"

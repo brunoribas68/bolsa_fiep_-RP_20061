@@ -16,7 +16,6 @@ Rodar de novo acrescenta só os arquivos/amostras novos, sem mexer no que já fo
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pandas as pd

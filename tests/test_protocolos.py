@@ -1,5 +1,4 @@
 """Protocolos de biossensor: o imunossensor NS1 (bloqueio -> mAb-NS1 -> final, SWV) e o do case."""
-import pandas as pd
 
 from fiep.config import load_config
 from fiep.experimentos import rodar
