@@ -10,10 +10,10 @@ import ScatterPlotOutlined from "@mui/icons-material/ScatterPlotOutlined";
 import ScienceOutlined from "@mui/icons-material/ScienceOutlined";
 import ShowChart from "@mui/icons-material/ShowChart";
 import {
-  AppBar, Avatar, Box, CircularProgress, Divider, Drawer, IconButton, List, ListItemButton, ListItemIcon,
+  Alert, AppBar, Avatar, Box, CircularProgress, Divider, Drawer, IconButton, List, ListItemButton, ListItemIcon,
   ListItemText, Stack, Toolbar, Tooltip, Typography, useMediaQuery, useTheme,
 } from "@mui/material";
-import { useState } from "react";
+import { Component, type ReactNode, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
 import ColetaDetalhe from "./paginas/ColetaDetalhe";
@@ -89,6 +89,17 @@ function Menu({ aoNavegar }: { aoNavegar?: () => void }) {
   );
 }
 
+// Se uma página quebrar, mostra o erro no lugar dela (sem isto o React apaga a tela inteira).
+class ErroNaPagina extends Component<{ children: ReactNode }, { erro: string | null }> {
+  state = { erro: null as string | null };
+  static getDerivedStateFromError(e: Error) { return { erro: e.message }; }
+  render() {
+    if (!this.state.erro) return this.props.children;
+    return <Alert severity="error">Esta página teve um erro e não pôde ser exibida: {this.state.erro}.
+      Recarregue a página; se continuar, avise o responsável pelo sistema.</Alert>;
+  }
+}
+
 export default function App() {
   const { usuario, carregando, pode } = useAuth();
   const local = useLocation();
@@ -121,6 +132,7 @@ export default function App() {
         <Menu aoNavegar={() => setAberto(false)} />
       </Drawer>
       <Box component="main" sx={{ flex: 1, minWidth: 0, px: { xs: 2, sm: 3, lg: 4 }, pt: { xs: 10, md: 4 }, pb: 6, maxWidth: 1280 }}>
+        <ErroNaPagina key={local.pathname}>
         <Routes>
           <Route path="/" element={<Painel />} />
           <Route path="/coletas" element={<Coletas />} />
@@ -137,6 +149,7 @@ export default function App() {
           <Route path="/entrar" element={<Navigate to={(local.state as { de?: string })?.de || "/"} replace />} />
           <Route path="*" element={<Typography>Página não encontrada.</Typography>} />
         </Routes>
+        </ErroNaPagina>
       </Box>
     </Box>
   );
