@@ -244,7 +244,13 @@ API: http://127.0.0.1:8000/docs.
 | `FIEP_ADMIN_EMAIL` / `FIEP_ADMIN_SENHA` | — | cria o primeiro admin se não houver usuários (Docker) |
 | `FIEP_SENHA_NOVA` | — | senha para `fiep usuario criar/senha` sem digitar (scripts) |
 
-### Docker
+### Docker e servidor
+
+No servidor (VPS), a plataforma roda com Docker Compose e HTTPS automático pelo Caddy, a partir da pasta
+[`deploy/`](deploy/): `./instalar.sh` uma vez; depois `./backup.sh` (agendado todo dia), `./restaurar.sh` e
+`./atualizar.sh`. Passo a passo da instalação e da manutenção: [`docs/DEPLOY.md`](docs/DEPLOY.md).
+
+Só a imagem, para testar no computador:
 
 ```bash
 docker build -f api/Dockerfile -t fiep .
@@ -308,7 +314,8 @@ web/                    frontend React + Material UI (Vite + TypeScript)
 notebook/               entrega 1
 artigo/                 entrega 3
 tools/nox2excel.py      conversor avulso .nox -> Excel/CSV (e .exe para quem não tem Python)
-docs/                   COMANDOS (todas as opções), PIPELINE, BANCO, PLATAFORMA, DICIONARIO_DADOS
+deploy/                 servidor: Docker Compose + Caddy (HTTPS), instalar, backup, restaurar, atualizar
+docs/                   COMANDOS (todas as opções), PIPELINE, BANCO, PLATAFORMA, DICIONARIO_DADOS, DEPLOY
 tests/                  testes automáticos
 ```
 

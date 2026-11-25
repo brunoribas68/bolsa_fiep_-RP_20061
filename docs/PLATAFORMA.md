@@ -68,7 +68,7 @@ Não há cadastro aberto: o admin cria as contas (página **Usuários** ou `fiep
 
 Em produção: rode atrás de HTTPS, defina `FIEP_SECRET` (`openssl rand -base64 48`),
 `FIEP_COOKIE_SEGURO=1` e, de preferência, Postgres em `FIEP_DB_URL`. Todas as variáveis estão em
-`api/config.py`. Imagem Docker: `api/Dockerfile`.
+`api/config.py`. Imagem Docker: `api/Dockerfile`; servidor: [`DEPLOY.md`](DEPLOY.md).
 
 ## API
 

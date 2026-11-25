@@ -1,0 +1,33 @@
+# Plataforma FIEP no servidor: o sistema (fiep) + o Caddy, que dá o HTTPS do domínio.
+# Rodar a partir desta pasta: docker compose up -d --build   (ver docs/DEPLOY.md)
+services:
+  fiep:
+    build:
+      context: ..
+      dockerfile: api/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      FIEP_COOKIE_SEGURO: "1"
+      FORWARDED_ALLOW_IPS: "*"       # o uvicorn confia no Caddy (a porta 8000 não fica exposta na internet)
+    volumes:
+      - ./dados:/app/dados           # banco (fiep.db) e .nox recebidos
+      - ./modelos:/app/modelos       # modelos treinados
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file: .env                   # DOMINIO
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data             # certificados HTTPS
+      - caddy_config:/config
+    depends_on:
+      - fiep
+
+volumes:
+  caddy_data:
+  caddy_config:

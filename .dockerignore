@@ -10,3 +10,7 @@ modelos
 notebook
 artigo
 *.db
+deploy/dados
+deploy/modelos
+deploy/backups
+deploy/.env

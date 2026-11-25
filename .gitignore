@@ -22,6 +22,12 @@ dados/*
 *.db
 *.db-wal
 *.db-shm
+# Servidor (deploy/): dados, modelos, backups e configuração com senhas
+deploy/dados/
+deploy/modelos/
+deploy/backups/
+deploy/.env
+*.tar.gz
 
 # Saídas geradas (regeneráveis)
 modelos/
