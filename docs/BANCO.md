@@ -1,16 +1,13 @@
 # Banco de dados (SQLAlchemy ORM + migrations Alembic)
 
-O **modelo ORM em `fiep/orm/` é a fonte da verdade**. As tabelas ficam separadas por domínio:
+O **modelo ORM em `fiep/orm/` é a fonte da verdade**. Uma tabela por assunto:
 
 | Arquivo | Tabelas |
 |---|---|
 | `fiep/orm/auth.py` | `usuarios` |
-| `fiep/orm/cadastro.py` | `empresas`, `coletas` (cada envio de dados), `arquivos` (originais, por SHA-256) |
-| `fiep/orm/dados.py` | `amostras`, `plaqueamentos`, `medicoes`, `curvas` (pontos como vetores), `qc` |
-| `fiep/orm/ml.py` | `modelos`, `predicoes` |
-| `fiep/orm/genossensor.py` | `ensaios` (base do genossensor: branco/alvo, pico, eletrodo, concentração — [dicionário](DICIONARIO_DADOS.md)) |
-
-Views (criadas nas migrations): `v_medicoes`, `v_replicatas`, `v_qc_atual`, `v_predicoes`.
+| `fiep/orm/cadastro.py` | `empresas`, `coletas` (cada envio de `.nox`) |
+| `fiep/orm/genossensor.py` | `ensaios`: um voltamograma por linha (branco ou RNA), com o pico e a curva — [dicionário](DICIONARIO_DADOS.md) |
+| `fiep/orm/ml.py` | `modelos` (cartão de cada modelo treinado), `predicoes` |
 
 Padrão: SQLite em `dados/fiep.db`. Para Postgres: `pip install -e ".[postgres]"` e
 `FIEP_DB_URL=postgresql+psycopg://usuario:senha@host/fiep`.
@@ -19,64 +16,43 @@ Padrão: SQLite em `dados/fiep.db`. Para Postgres: `pip install -e ".[postgres]"
 
 | Revisão | O que faz |
 |---|---|
-| `0001_esquema_inicial` | todas as tabelas |
-| `0002_views` | views de consulta |
-| `0003_dados_exemplo` | carrega `dados/exemplo_case` como a empresa "Exemplo (case sintético)" |
-| `0004_base_do_genossensor` | tabela `ensaios` do genossensor |
-| `0005_etapas_bare_tratado` | etapas bare e tratado; elemento de captura opcional nelas |
+| `r001_esquema_do_genossensor` | todas as tabelas |
 
-```bash
-fiep db migrar                       # cria/atualiza o banco (com os dados de exemplo)
-fiep db migrar --sem-exemplo         # sem os dados de exemplo
-fiep db exemplo --remover            # tira os dados de exemplo (quando chegarem os reais)
-# com dados reais no banco, `fiep experimento --db` já deixa o exemplo de fora (--com-exemplo inclui)
-fiep db exemplo                      # coloca de volta
-```
-
-### Banco da versão anterior
-
-Se `dados/fiep.db` foi criado antes do ORM (versão sem migrations), o primeiro comando que abrir o
-banco guarda uma cópia (`dados/fiep.antigo-AAAAMMDD-HHMMSS.db`), cria o banco novo e copia para ele
-amostras, medições, curvas, QC, modelos e previsões. Nesse caso os dados de exemplo não são
-carregados (para não misturar); use `fiep db exemplo` se quiser.
+As migrations da versão anterior (0001–0005, com o case de exemplo) foram substituídas por esta. Um
+banco daquela versão é recusado com a orientação de rodar `fiep db zerar`, que guarda uma cópia em
+`dados/backup/`, recria o banco e mantém as contas de usuário (com as mesmas senhas).
 
 ### Mudando o banco
 
-1. Edite os modelos em `fiep/orm/` (nova coluna, nova tabela, novo arquivo de domínio — importe-o em
+1. Edite os modelos em `fiep/orm/` (nova coluna, nova tabela, novo arquivo — importe-o em
    `fiep/orm/__init__.py`).
 2. Gere a migration: `alembic revision --autogenerate -m "o que mudou"` (na raiz do repositório).
 3. Confira o arquivo gerado em `fiep/migracoes/versions/` (o autogenerate não detecta tudo, ex.:
-   renomear coluna vira apagar + criar) e aplique: `alembic upgrade head` ou `fiep db migrar`.
+   renomear coluna vira apagar + criar) e aplique: `fiep db migrar`.
 4. Para voltar: `alembic downgrade -1`.
 
 O teste `test_migrations_sobem_descem_e_batem_com_o_orm` falha se o ORM e as migrations divergirem.
 No SQLite, as migrations usam *batch mode* (o Alembic recria a tabela para `ALTER TABLE`).
 
-Migrations de **dados** (como a 0003) declaram as tabelas que usam com `sa.table(...)` em vez de
-importar os modelos: o ORM vai mudar e a migration precisa continuar funcionando como foi escrita.
-
-## Comandos
+## Consultas úteis
 
 ```bash
-fiep db importar --entrada dados [--empresa "Laticínio A"]   # lê .nox/tabelas, grava e roda o QC
-fiep db resumo
-fiep db sql "SELECT * FROM v_replicatas WHERE n_aprovadas < 3"
-fiep db exportar --saida dados/fiep_banco.xlsx                # uma aba por tabela (+ pontos)
-fiep experimento --db dados/fiep.db                           # treina com o banco
-fiep usuario criar --email ... --papel admin                  # contas da plataforma
+fiep db sql "SELECT tipo, concentracao, COUNT(*) n, COUNT(DISTINCT eletrodo_id) eletrodos FROM ensaios GROUP BY 1, 2"
+fiep db sql "SELECT eletrodo_id, SUM(tipo = 'branco') brancos, SUM(tipo = 'rna') rna FROM ensaios GROUP BY 1"
+fiep db sql "SELECT arquivo FROM ensaios WHERE tipo = 'rna' AND branco_id IS NULL"      # RNA sem branco
+fiep db sql "SELECT id, algoritmo, representacao, balanced_accuracy, referencia FROM modelos"
+fiep db sql "SELECT previsto_em, arquivo, resultado, prob_contaminado FROM predicoes ORDER BY 1 DESC LIMIT 20"
+fiep rna tabela --saida dados/base.xlsx       # a base inteira, com a queda do pico, em Excel
 ```
-
-Reimportar não duplica: medições e amostras são atualizadas; arquivos repetidos (mesmo SHA-256) são
-ignorados.
 
 ## Em Python
 
 ```python
-from fiep import db
-s = db.conectar()                                  # sessão SQLAlchemy (aplica migrations pendentes)
-ds = db.carregar(s, "tecnica = ?", ("DPV",))       # Dataset pronto para treinar/prever
-db.sql(s, "SELECT * FROM v_replicatas")            # DataFrame
+from fiep import db, genossensor as g
+s = db.conectar()                           # sessão SQLAlchemy (aplica migrations pendentes)
+base = g.tabela(s)                          # DataFrame com as colunas calculadas (queda_pct...)
+db.sql(s, "SELECT * FROM coletas")          # consulta livre
 
-from fiep.orm import Amostra
-s.query(Amostra).filter(Amostra.contamination_status.is_(None)).count()
+from fiep.orm import Ensaio
+s.query(Ensaio).filter(Ensaio.tipo == "branco").count()
 ```

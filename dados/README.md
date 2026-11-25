@@ -2,106 +2,23 @@
 
 ```
 dados/
-  (seus .nox + planilha)  <- SOLTOS aqui: divididos em treino / validação / teste (50/25/25)
-  treino/        <- opcional: vai INTEIRO para o treino (somado à parte sorteada)
-  validacao/     <- opcional: vai inteiro para a validação (escolha do modelo)
-  teste/         <- opcional: vai inteiro para o teste (ex.: coleta de outra empresa/lote = validação externa)
-  exemplo_case/  <- dados do case (sintéticos), usados só quando não há nenhum outro dado
-  fiep.db        <- banco SQLite gerado pela pipeline (não vai para o Git)
+  rna/
+    contaminado/       <- dpv-RNA-<conc>-Ej.nox (com o RNA da bactéria; conc em ng/mL, sempre com decimal: 0,1 / 10,0)
+    nao_contaminado/   <- dpv-branco-Ej.nox (eletrodo só com o elemento de captura)
+    ensaios.csv        <- opcional: correções (coluna arquivo + as colunas a trocar)
+  recebidos/           <- .nox enviados pela plataforma (uma pasta por coleta)
+  backup/              <- cópias feitas pelo fiep db zerar
+  fiep.db              <- banco SQLite
 ```
 
-Nada disso vai para o Git (o repositório é público), exceto `exemplo_case/` e este arquivo.
-Pode usar subpastas para organizar (ex.: `dados/empresa1/2026-11/`): tudo fora das quatro pastas
-reservadas conta como dado solto.
+**Nada disso vai para o Git** (o repositório é público), só este arquivo.
 
-## Regra da divisão
+`fiep rna pastas --entrada dados/rna` cria `contaminado/` e `nao_contaminado/`.
+`fiep rna importar --entrada dados/rna` grava os `.nox` no banco: um arquivo na pasta errada (um branco
+em `contaminado/`, um RNA em `nao_contaminado/`), de outra etapa (`bare`, `tratado`...) ou sem o
+eletrodo no nome não entra, e a importação diz qual foi e por quê. Importar de novo não duplica.
 
-1. Tudo o que estiver **solto em `dados/`** é dividido **por amostra** (todas as réplicas e estágios de
-   uma amostra ficam no mesmo conjunto), estratificado pela classe, em **50% treino, 25% validação e
-   25% teste** — a divisão típica sugerida por Hastie, Tibshirani e Friedman (*The Elements of
-   Statistical Learning*, 2.ª ed., seção 7.2). As proporções ficam em `[divisao]` de
-   `configs/default.toml`.
-2. O que estiver em **`dados/treino/`, `dados/validacao/` ou `dados/teste/`** vai inteiro para aquele
-   conjunto e é **somado** à parte sorteada. Uma amostra que esteja numa dessas pastas nunca é sorteada
-   para outro conjunto (e a mesma amostra em duas pastas é erro).
-3. Se a validação ou o teste ficarem vazios (ex.: só há dados em `dados/treino/`), eles são sorteados
-   do treino nas mesmas proporções.
-4. Sem dado nenhum, usa `dados/exemplo_case/` (demonstração).
+O `Ej` é o eletrodo: o branco e o RNA do mesmo eletrodo levam o mesmo `Ej`. O treino nunca separa as
+medições de um eletrodo entre treino e teste.
 
-Para que serve cada conjunto:
-
-| Conjunto | Uso |
-|---|---|
-| treino | ajustar os modelos; a validação cruzada agrupada dentro dele dá o limiar de decisão e a estabilidade |
-| validação | escolher a representação × modelo (maior acurácia balanceada) |
-| teste | medir **uma vez** o modelo escolhido, re-treinado com treino + validação; não participa de nenhuma escolha |
-
-Com o banco (`fiep db importar --entrada dados`), cada parte é gravada com o seu conjunto e
-`fiep experimento --db dados/fiep.db` aplica a mesma regra. Também é possível definir conjuntos por
-filtro SQL: `--filtro-teste "sensor_lot = 'L09'"`.
-
-## Como preparar um lote de .nox
-
-**Não é preciso preencher arquivo por arquivo.** A pipeline deduz sozinha, de cada `.nox`:
-
-Vale tanto o `.nox` quanto o **Excel/CSV exportado pelo NOVA** (mesmas colunas: `Potential applied (V)`,
-`WE(1).δ.Current (A)`...). Quando os dois existem no mesmo lote, usa o `.nox`. `fiep db importar` guarda
-uma cópia em Excel de cada `.nox` em `dados/excel/` (essa pasta não entra no treino).
-
-| Campo | De onde vem |
-|---|---|
-| etapa do sensor | nome do arquivo ou, se ele não disser, o nome do procedimento gravado no `.nox` (ver protocolos abaixo) |
-| eletrodo (réplica) | `E1`, `E2`… no nome do arquivo; sem isso, o canal do potenciostato (`MAC80058#2` → `2`) |
-| amostra | a **pasta** do arquivo: uma pasta = uma amostra |
-| data | gravada no `.nox` |
-| contaminada ou não | nome da pasta: `contaminada/`, `nao_contaminada/`, `positivo/`, `negativo/`, `controle_neg/` |
-
-Protocolos reconhecidos (o modelo usa a diferença entre a última etapa e a anterior, no mesmo eletrodo):
-
-| Protocolo | Técnica | Etapas, na ordem | Exemplo de nomes |
-|---|---|---|---|
-| Imunossensor NS1 | SWV | bloqueio → mAb-NS1 → final | `bloqueio-E1.nox`, `mAb-NS1-E1.nox`, `final-E1.nox` |
-| rRNA 16S (case) | DPV | carbono limpo → sonda → sonda + rRNA | `DPV_limpo_E1`, `DPV_sonda_E1`, `DPV_rRNA_E1` |
-
-Outro protocolo: acrescente em `configs/default.toml` (`[protocolos.<nome>]`, ver `fiep/protocolos.py`).
-
-O jeito mais simples é organizar as pastas assim e não preencher nada:
-
-```
-dados/empresa1/
-  contaminada/
-    A01/   <- os .nox dos 3 estágios de todos os eletrodos da amostra A01
-    A02/
-  nao_contaminada/
-    B01/
-```
-
-O único dado que não sai do voltamograma é o resultado do plaqueamento (é o que o modelo aprende
-a prever). Se ele não estiver no nome das pastas, informe uma vez **por amostra**:
-
-```bash
-fiep planilha --entrada dados/empresa1
-```
-
-Isso cria duas tabelas na pasta, já preenchidas com o que foi deduzido:
-
-- `amostras.csv` — **uma linha por amostra**: complete `contamination_status` (1 = contaminada,
-  0 = não) e, se houver, `sample_log10_mean_cfu_ml`. As colunas `estagios_encontrados` e
-  `observacoes` mostram se falta algum estágio.
-- `metadados_nox.csv` — uma linha por arquivo, só para **conferir**. Corrija o que estiver errado;
-  o que estiver preenchido nela vence o que a pipeline deduziu (`preenchido_auto` diz o que foi
-  deduzido). Rodar de novo só acrescenta arquivos novos.
-
-Se os arquivos seguem um padrão de nome (ex.: `EMP1-S07-R3-sonda.nox`), dá para ensinar a pipeline
-em `[metadados].padrao_nome` de `configs/default.toml`.
-
-Depois:
-
-```bash
-fiep db importar --entrada dados
-fiep db sql "SELECT * FROM v_replicatas WHERE n_aprovadas < 3"     # réplicas incompletas
-fiep experimento --artigo
-```
-
-Cada réplica precisa dos **três estágios do sensor** medidos no mesmo eletrodo (mesmo canal) para
-entrar no modelo de diferença entre estágios. Se faltar algo, `fiep experimento` diz o quê.
+Campos, regras e o padrão de nome: [`../docs/DICIONARIO_DADOS.md`](../docs/DICIONARIO_DADOS.md).

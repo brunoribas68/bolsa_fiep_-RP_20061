@@ -81,7 +81,7 @@ class Reader:
 
     def values(self, oid, meta):
         name, members, bt, add = meta
-        vals, i = {}, 0
+        vals = {}
         pending_null = 0
         for k, m in enumerate(members):
             if pending_null:

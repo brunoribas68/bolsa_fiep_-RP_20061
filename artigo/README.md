@@ -1,5 +1,11 @@
 # Artigo (LaTeX, pt-BR)
 
+> **Situação:** os resultados, tabelas e figuras em `gerado/` são da fase anterior do projeto (case
+> sintético de 3 etapas). O projeto passou a usar a base do genossensor (branco × RNA, uma curva por
+> medição) e o `fiep experimento --artigo` que gerava esses arquivos foi removido junto com o case.
+> Introdução e fundamentação seguem valendo; métodos e resultados serão reescritos quando a base de RNA
+> tiver dados suficientes.
+
 ```
 main.tex            documento principal
 secoes/*.tex        resumo, introdução, métodos, resultados, discussão, conclusão

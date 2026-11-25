@@ -19,29 +19,20 @@ venv/
 *.nox
 dados/*
 !dados/README.md
-!dados/exemplo_case/
-!dados/treino/
-!dados/validacao/
-!dados/teste/
-dados/treino/*
-dados/validacao/*
-dados/teste/*
-!dados/treino/.gitkeep
-!dados/validacao/.gitkeep
-!dados/teste/.gitkeep
-!dados/treino/LEIA-ME.md
-!dados/validacao/LEIA-ME.md
 *.db
 *.db-wal
 *.db-shm
+# Servidor (deploy/): dados, modelos, backups e configuração com senhas
+deploy/dados/
+deploy/modelos/
+deploy/backups/
+deploy/.env
+*.tar.gz
 
 # Saídas geradas (regeneráveis)
 modelos/
 resultados/
-mlruns/
-mlartifacts/
 *.joblib
-nova_coleta/
 
 # Artigo: arquivos auxiliares do LaTeX
 artigo/*.aux

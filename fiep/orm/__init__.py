@@ -1,21 +1,17 @@
 """Modelo de dados (SQLAlchemy ORM) — a fonte da verdade do banco do projeto.
 
-As tabelas ficam separadas por domínio, um arquivo cada, para que possam mudar à vontade até o fim
-do projeto (cada mudança vira uma migration em `fiep/migracoes/`):
+Um arquivo por domínio (cada mudança vira uma migration em `fiep/migracoes/`):
 
-    auth.py      usuários da plataforma (login)
-    cadastro.py  empresas e coletas (cada envio de dados), arquivos recebidos
-    dados.py     amostras, plaqueamentos, medições, curvas, controle de qualidade
-    ml.py        modelos treinados e previsões
-    genossensor.py  ensaios do genossensor (branco/alvo, pico, eletrodo, concentração)
+    auth.py         usuários da plataforma (login)
+    cadastro.py     empresas e coletas (cada envio de arquivos)
+    genossensor.py  ensaios: um voltamograma DPV por linha (branco ou RNA), com o pico e a curva
+    ml.py           modelos treinados e previsões
 
-O mesmo modelo serve a pipeline (`fiep.db`), a API (`api/`) e as migrations (Alembic).
 Banco padrão: SQLite em `dados/fiep.db`; para Postgres, defina `FIEP_DB_URL`
 (ex.: postgresql+psycopg://usuario:senha@host/fiep).
 """
 from __future__ import annotations
 
-import logging
 import os
 from pathlib import Path
 
@@ -25,16 +21,14 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .base import Base
 from .auth import Usuario
-from .cadastro import Arquivo, Coleta, Empresa
-from .dados import Amostra, Curva, Medicao, Plaqueamento, ResultadoQC
-from .ml import ModeloML, Predicao
+from .cadastro import Coleta, Empresa
 from .genossensor import Ensaio
+from .ml import ModeloML, Predicao
 
-__all__ = ["Base", "Usuario", "Empresa", "Coleta", "Arquivo", "Amostra", "Plaqueamento", "Medicao", "Curva",
-           "ResultadoQC", "ModeloML", "Predicao", "Ensaio", "url_banco", "criar_engine", "fabrica_sessoes", "migrar"]
+__all__ = ["Base", "Usuario", "Empresa", "Coleta", "Ensaio", "ModeloML", "Predicao", "url_banco", "criar_engine",
+           "fabrica_sessoes", "migrar"]
 
 BANCO_PADRAO = "dados/fiep.db"
-log = logging.getLogger(__name__)
 
 
 def url_banco(caminho_ou_url: str | Path | None = None) -> str:
@@ -66,44 +60,50 @@ def criar_engine(caminho_ou_url: str | Path | None = None) -> Engine:
     return _engines[url]
 
 
-def migrar(caminho_ou_url: str | Path | None = None, dados_exemplo: bool = True, revisao: str = "head") -> None:
-    """Aplica as migrations (cria o banco se não existir). `dados_exemplo=False` pula a carga do case."""
+def migrar(caminho_ou_url: str | Path | None = None, revisao: str = "head") -> None:
+    """Aplica as migrations (cria o banco se não existir)."""
     from alembic import command
     from alembic.config import Config
+    from alembic.script import ScriptDirectory
     cfg = Config()
     cfg.set_main_option("script_location", str(Path(__file__).resolve().parent.parent / "migracoes"))
-    cfg.set_main_option("sqlalchemy.url", url_banco(caminho_ou_url))
     url = url_banco(caminho_ou_url)
-    antigo = None
+    cfg.set_main_option("sqlalchemy.url", url)
     if url.startswith("sqlite:///"):
-        from .. import legado
         arquivo = Path(url[len("sqlite:///"):])
-        if legado.eh_antigo(arquivo):
-            # banco da versão anterior (sem migrations): guarda uma cópia e converte
-            if url in _engines:
-                _engines.pop(url).dispose()          # solta o arquivo (no Windows não renomeia aberto)
-            antigo = legado.nome_backup(arquivo)
-            arquivo.replace(antigo)
-            for extra in ("-wal", "-shm"):
-                f = arquivo.with_name(arquivo.name + extra)
-                if f.exists():
-                    f.replace(antigo.with_name(antigo.name + extra))
-            dados_exemplo = False                    # o banco já tinha dados: não mistura o exemplo
-            log.warning("Banco antigo encontrado: cópia em %s; convertendo para o formato novo.", antigo)
-        elif "alembic_version" not in legado.tabelas(arquivo) and legado.tabelas(arquivo) - {"sqlite_sequence"}:
+        existentes = _tabelas_sqlite(arquivo)
+        if "alembic_version" not in existentes and existentes - {"sqlite_sequence"}:
             raise RuntimeError(f"{arquivo} tem tabelas, mas não é um banco da plataforma FIEP. "
                                "Use outro caminho (--db) ou mova esse arquivo.")
-    cfg.attributes["dados_exemplo"] = dados_exemplo
+        if "alembic_version" in existentes:
+            conhecidas = {s.revision for s in ScriptDirectory.from_config(cfg).walk_revisions()}
+            versao = _versao_sqlite(arquivo)
+            if versao and versao not in conhecidas:
+                raise RuntimeError(f"{arquivo} é da versão anterior da plataforma (com o case de exemplo). "
+                                   "Rode `fiep db zerar`: ele guarda uma cópia, recria o banco e mantém as contas "
+                                   "de usuário; depois importe os .nox de novo com `fiep rna importar`.")
     command.upgrade(cfg, revisao)
-    if antigo is not None:
-        from .. import legado
-        s = fabrica_sessoes(caminho_ou_url)()
-        try:
-            r = legado.converter(antigo, s)
-        finally:
-            s.close()
-        log.warning("Conversão concluída: %s medições, %s modelos, %s previsões. O arquivo antigo ficou em %s.",
-                    r["medicoes"], r["modelos"], r["previsoes"], antigo)
+
+
+def _versao_sqlite(arquivo: Path) -> str | None:
+    import sqlite3
+    con = sqlite3.connect(arquivo)
+    try:
+        r = con.execute("SELECT version_num FROM alembic_version").fetchone()
+        return r[0] if r else None
+    finally:
+        con.close()
+
+
+def _tabelas_sqlite(arquivo: Path) -> set[str]:
+    if not arquivo.exists() or arquivo.stat().st_size == 0:
+        return set()
+    import sqlite3
+    con = sqlite3.connect(arquivo)
+    try:
+        return {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    finally:
+        con.close()
 
 
 def fabrica_sessoes(caminho_ou_url: str | Path | None = None) -> sessionmaker[Session]:

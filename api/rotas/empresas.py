@@ -1,4 +1,4 @@
-"""Empresas (onde as coletas são feitas)."""
+"""Empresas e laboratórios (de onde vêm as coletas)."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from fiep.orm import Amostra, Coleta, Empresa
+from fiep.orm import Coleta, Empresa, Ensaio
 
 from ..deps import pode_editar, sessao, usuario_atual
 
@@ -20,15 +20,15 @@ class DadosEmpresa(BaseModel):
     observacoes: str | None = Field(default=None, max_length=2000)
 
 
-def _json(e: Empresa, n_coletas=0, n_amostras=0) -> dict:
+def _json(e: Empresa, n_coletas=0, n_ensaios=0) -> dict:
     return {"id": e.id, "nome": e.nome, "cidade": e.cidade, "segmento": e.segmento, "observacoes": e.observacoes,
-            "n_coletas": n_coletas, "n_amostras": n_amostras}
+            "n_coletas": n_coletas, "n_ensaios": n_ensaios}
 
 
 @r.get("")
 def listar(s: Session = Depends(sessao), _=Depends(usuario_atual)):
     nc = dict(s.execute(select(Coleta.empresa_id, func.count()).group_by(Coleta.empresa_id)).all())
-    na = dict(s.execute(select(Amostra.empresa_id, func.count()).group_by(Amostra.empresa_id)).all())
+    na = dict(s.execute(select(Ensaio.empresa_id, func.count()).group_by(Ensaio.empresa_id)).all())
     return [_json(e, nc.get(e.id, 0), na.get(e.id, 0)) for e in s.scalars(select(Empresa).order_by(Empresa.nome))]
 
 

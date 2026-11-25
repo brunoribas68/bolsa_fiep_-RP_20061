@@ -156,7 +156,7 @@ export default function GraficoDispersao({ pontos, grupos, rotX, rotY, tendencia
         }}>
           <Typography variant="subtitle2">{foco.titulo}</Typography>
           {foco.linhas?.map(l => <Typography key={l} variant="body2" color="text.secondary">{l}</Typography>)}
-          {aoClicar && <Typography variant="caption" color="text.disabled">clique para abrir a amostra</Typography>}
+          {aoClicar && <Typography variant="caption" color="text.disabled">clique para abrir</Typography>}
         </Paper>
       )}
     </Box>

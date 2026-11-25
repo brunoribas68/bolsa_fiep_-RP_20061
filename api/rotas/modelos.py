@@ -1,13 +1,11 @@
-"""Modelos: métricas do modelo em uso, comparação de algoritmos, histórico e novos treinos."""
+"""Modelos: o modelo em uso, a comparação de algoritmos e representações, o histórico e novos treinos."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from fiep import registro
-from fiep.catalogo import INFO_CLASSIFICADORES, INFO_REGRESSORES
-from fiep.experimentos import INFO_VARIANTES, VARIANTES
+from fiep import modelagem
+from fiep.catalogo import INFO_CLASSIFICADORES
 from fiep.orm import Usuario
 
 from ..deps import pode_editar, so_admin, usuario_atual
@@ -17,56 +15,39 @@ r = APIRouter(prefix="/api", tags=["modelos"])
 
 class NovoTreino(BaseModel):
     algoritmos: list[str] = Field(default_factory=list, description="vazio = todos")
-    variantes: list[str] = Field(default_factory=list, description="vazio = todas")
+    variantes: list[str] = Field(default_factory=list, description="representações da curva; vazio = todas")
     empresas: list[int] = Field(default_factory=list, description="vazio = todas")
-    com_exemplo: bool = False
     ativar: bool = False
-    treino: float = Field(default=0.5, gt=0, lt=1)
-    validacao: float = Field(default=0.25, ge=0, lt=1)
-    teste: float = Field(default=0.25, ge=0, lt=1)
-
-
-def _pastas(request: Request):
-    cfg = request.app.state.config
-    return cfg.modelos, cfg.resultados
 
 
 @r.get("/catalogo")
 def catalogo(_=Depends(usuario_atual)):
-    """Algoritmos, representações e regressores com nome legível e explicação (tooltips da plataforma)."""
+    """Algoritmos e representações com nome legível e explicação (tooltips da plataforma)."""
     return {
         "algoritmos": [{"id": k, **v, "descricao": f"{v['nome']} — {v['ajuste']}"} for k, v in INFO_CLASSIFICADORES.items()],
-        "variantes": [{"id": k, **INFO_VARIANTES.get(k, {"nome": k, "o_que": ""}),
-                       "descricao": INFO_VARIANTES.get(k, {}).get("o_que", k)} for k in VARIANTES],
-        "regressores": [{"id": k, **v, "descricao": f"{v['nome']} — {v['ajuste']}"} for k, v in INFO_REGRESSORES.items()],
+        "variantes": [{"id": k, **v, "descricao": v["o_que"]} for k, v in modelagem.INFO_VARIANTES.items()],
+        "ba_confiavel": modelagem.BA_CONFIAVEL,
     }
 
 
 @r.get("/modelos")
 def listar(request: Request, _=Depends(usuario_atual)):
-    return registro.listar(_pastas(request)[0])
+    return modelagem.listar(request.app.state.config.modelos)
 
 
 @r.get("/modelos/{mid}")
 def detalhe(mid: str, request: Request, _=Depends(usuario_atual)):
+    pasta = request.app.state.config.modelos
     try:
-        return registro.detalhe(mid, *_pastas(request))
+        return {**modelagem.cartao(mid, pasta), "em_uso": modelagem.em_uso(pasta) == mid}
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from e
-
-
-@r.get("/modelos/{mid}/figuras/{nome}")
-def figura(mid: str, nome: str, request: Request, _=Depends(usuario_atual)):
-    try:
-        return FileResponse(registro.figura(mid, nome, *_pastas(request)), media_type="image/png")
-    except FileNotFoundError as e:
-        raise HTTPException(404, "Figura não encontrada.") from e
 
 
 @r.post("/modelos/{mid}/ativar")
 def ativar(mid: str, request: Request, _=Depends(so_admin)):
     try:
-        registro.ativar(mid, _pastas(request)[0])
+        modelagem.ativar_modelo(mid, request.app.state.config.modelos)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from e
     return {"ok": True, "em_uso": mid}
@@ -87,17 +68,13 @@ def treino(tid: str, request: Request, _=Depends(usuario_atual)):
 
 @r.post("/treinos", status_code=202)
 def novo_treino(dados: NovoTreino, request: Request, u: Usuario = Depends(pode_editar)):
-    algs = [a for a in dados.algoritmos if a not in INFO_CLASSIFICADORES]
-    vars_ = [v for v in dados.variantes if v not in VARIANTES]
-    if algs or vars_:
-        raise HTTPException(400, f"Desconhecidos: {algs + vars_}")
+    desconhecidos = [a for a in dados.algoritmos if a not in INFO_CLASSIFICADORES] + \
+                    [v for v in dados.variantes if v not in modelagem.INFO_VARIANTES]
+    if desconhecidos:
+        raise HTTPException(400, f"Desconhecidos: {desconhecidos}")
     if dados.ativar and u.papel != "admin":
         raise HTTPException(403, "Só administradores trocam o modelo em uso.")
-    if abs(dados.treino + dados.validacao + dados.teste - 1) > 0.01:
-        raise HTTPException(400, "As proporções de treino, validação e teste precisam somar 100%.")
-    params = dados.model_dump()
-    params["proporcoes"] = {"treino": dados.treino, "validacao": dados.validacao, "teste": dados.teste}
     try:
-        return request.app.state.treinos.iniciar(params, u.nome)
+        return request.app.state.treinos.iniciar(dados.model_dump(), u.nome)
     except RuntimeError as e:
         raise HTTPException(409, str(e)) from e
