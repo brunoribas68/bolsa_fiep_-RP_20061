@@ -275,14 +275,25 @@ def salvar(pacote: dict, pasta: str | Path = PASTA_MODELOS, ativar: bool = True,
     return destino
 
 
+def _formato_atual(c: dict) -> bool:
+    """Cartões de versões antigas (da época do case, antes da base de RNA) não têm estes campos."""
+    return all(k in c for k in ("algoritmo", "representacao", "dados", "placar"))
+
+
 def em_uso(pasta: str | Path = PASTA_MODELOS) -> str | None:
+    """Id do modelo em uso; None se não houver ou se for de uma versão antiga."""
     f = Path(pasta) / "ATUAL"
-    return f.read_text(encoding="utf-8").strip() or None if f.exists() else None
+    id_ = f.read_text(encoding="utf-8").strip() if f.exists() else ""
+    c = Path(pasta) / id_ / "cartao.json"
+    if not id_ or (c.exists() and not _formato_atual(json.loads(c.read_text(encoding="utf-8")))):
+        return None
+    return id_
 
 
 def ativar_modelo(id_: str, pasta: str | Path = PASTA_MODELOS) -> None:
     if not (Path(pasta) / id_ / "modelo.joblib").exists():
         raise FileNotFoundError(f"modelo {id_} não encontrado em {pasta}/")
+    cartao(id_, pasta)                    # recusa modelo de versão antiga
     (Path(pasta) / "ATUAL").write_text(id_, encoding="utf-8")
 
 
@@ -290,13 +301,18 @@ def cartao(id_: str, pasta: str | Path = PASTA_MODELOS) -> dict:
     f = Path(pasta) / id_ / "cartao.json"
     if not f.exists():
         raise FileNotFoundError(f"modelo {id_} não encontrado em {pasta}/")
-    return json.loads(f.read_text(encoding="utf-8"))
+    c = json.loads(f.read_text(encoding="utf-8"))
+    if not _formato_atual(c):
+        raise FileNotFoundError(f"modelo {id_} é de uma versão antiga do sistema (antes da base de RNA): "
+                                "treine um novo")
+    return c
 
 
 def listar(pasta: str | Path = PASTA_MODELOS) -> list[dict]:
-    """Cartões dos modelos salvos, do mais novo ao mais antigo, com `em_uso`."""
+    """Cartões dos modelos salvos, do mais novo ao mais antigo, com `em_uso` (os de versões antigas ficam de fora)."""
     atual = em_uso(pasta)
     cs = [json.loads(f.read_text(encoding="utf-8")) for f in Path(pasta).glob("*/cartao.json")]
+    cs = [c for c in cs if _formato_atual(c)]
     return [{**c, "em_uso": c["id"] == atual} for c in sorted(cs, key=lambda c: c["id"], reverse=True)]
 
 

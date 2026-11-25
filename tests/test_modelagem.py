@@ -100,3 +100,22 @@ def test_cli_do_comeco_ao_fim(tmp_path, nox_sintetico, capsys):
     assert main(["modelos", "listar", "--modelos", modelos]) == 0 and "*" in capsys.readouterr().out
     assert main(["rna", "prever", "--modelos", str(tmp_path / "vazio"), "--entrada", str(tmp_path / "rna")]) == 1
     assert "nenhum modelo em uso" in capsys.readouterr().err
+
+
+def test_modelo_de_versao_antiga_e_ignorado(tmp_path):
+    """Modelos da época do case (cartão em outro formato) não podem derrubar a lista, a tela nem a previsão."""
+    import json
+    antigo = tmp_path / "20261101-120000"
+    antigo.mkdir()
+    (antigo / "modelo.joblib").touch()
+    (antigo / "cartao.json").write_text(json.dumps({"id": antigo.name, "modelo": "random_forest",
+                                                    "metricas_cv": {"balanced_accuracy": 0.9}}))
+    (tmp_path / "ATUAL").write_text(antigo.name)
+    assert m.listar(tmp_path) == []
+    assert m.em_uso(tmp_path) is None
+    with pytest.raises(FileNotFoundError, match="versão antiga"):
+        m.cartao(antigo.name, tmp_path)
+    with pytest.raises(FileNotFoundError, match="versão antiga"):
+        m.ativar_modelo(antigo.name, tmp_path)
+    with pytest.raises(FileNotFoundError, match="nenhum modelo em uso"):
+        m.carregar(tmp_path)

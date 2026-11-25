@@ -200,7 +200,8 @@ com o último scan (`--scan todos` ou `--scan N` para outros). Ver [`tools/LEIA-
   concentração; o limite de detecção aparece com 3 ou mais brancos.
 
 Saídas: o modelo em `modelos/<id>/` (`modelo.joblib` + `cartao.json`) e uma linha na tabela `modelos`;
-`modelos/ATUAL` diz qual está em uso. Detalhes: [`docs/PIPELINE.md`](docs/PIPELINE.md).
+`modelos/ATUAL` diz qual está em uso. Modelos de versões antigas (da época do case) são ignorados pela
+lista, pela tela e pela previsão; podem ser apagados da pasta. Detalhes: [`docs/PIPELINE.md`](docs/PIPELINE.md).
 
 ---
 
